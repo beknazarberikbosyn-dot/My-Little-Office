@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>My Little Office — пиксельный симулятор менеджера</title>
+  <meta name="description" content="Пиксельная игра: управляйте офисом фабрики резиновых уток, ловите шпионов конкурентов, штампуйте документы и не дайте офису превратиться в Уолл-стрит.">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;500;600;700&family=Press+Start+2P&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="stage">
+    <canvas id="game" width="384" height="224"></canvas>
+    <div id="ui">
+      <div id="bubbles"></div>
+
+      <div id="hud" class="hidden">
+        <div id="clock" class="wood">
+          <div class="c-top"><span id="c-day">Пн · День 1</span><img id="c-sky" alt=""></div>
+          <div id="c-time">9:00</div>
+          <div id="c-cash">$20 000</div>
+          <div class="meter"><span>Хаос</span><div class="bar"><i id="m-chaos"></i></div><b id="t-chaos">0%</b></div>
+          <div id="chaos-label">Спокойно</div>
+          <div class="meter"><span>Утки</span><div class="bar"><i id="m-ducks"></i></div><b id="t-ducks">0</b></div>
+          <div class="meter"><span>Резина</span><div class="bar"><i id="m-rubber"></i></div><b id="t-rubber">0 кг</b></div>
+          <div class="ctrls">
+            <button id="b-pause" title="Пауза (пробел)"></button>
+            <button id="b-speed" title="Ускорить время (F)"></button>
+            <button id="b-sound" title="Звук (M)"></button>
+          </div>
+        </div>
+        <div id="hotbar" class="wood"></div>
+        <div id="toasts"></div>
+      </div>
+
+      <div id="modal" class="hidden"><div id="panel" class="wood"></div></div>
+
+      <div id="dialog" class="hidden">
+        <div id="dlg-box" class="wood">
+          <div id="dlg-text"></div>
+          <div id="dlg-opts"></div>
+          <div id="dlg-next">▼</div>
+        </div>
+        <div id="dlg-port" class="wood">
+          <div class="port-frame"><img id="dlg-img" alt=""></div>
+          <div id="dlg-name"></div>
+          <div id="dlg-title"></div>
+        </div>
+      </div>
+
+      <div id="pause" class="hidden"><div class="wood">ПАУЗА<small>Пробел или клик — продолжить</small></div></div>
+
+      <div id="title">
+        <div class="title-card wood">
+          <img class="duck-img title-duck" alt="">
+          <h1>MY LITTLE<br>OFFICE</h1>
+          <p class="sub">«Кря Индастриз» — резиновые утки с 1987 года</p>
+          <p class="pitch">Вы — новый менеджер. Штампуйте документы, ловите шпионов ГусьКорп, следите за деньгами и не дайте офису сойти с ума до 18:00.</p>
+          <div class="title-btns">
+            <button class="btn big" id="btn-start">Начать рабочий день</button>
+            <button class="btn" id="btn-how">Как играть</button>
+          </div>
+          <div id="how" class="hidden">
+            <ul>
+              <li><b>Клик по сотруднику</b> за стеклом — досье и вызов «на ковёр».</li>
+              <li><b>Лоток на столе</b> — документы: штамп «СОГЛАСОВАНО» или «ОТКАЗАНО».</li>
+              <li><b>Монитор</b> — деньги и биржа. <b>Телефон</b> — кофе, пицца, психолог, резина.</li>
+              <li><b>Полоска над головой</b> — рассудок. Ноль — и человек становится брокером с Уолл-стрит.</li>
+              <li><kbd>1</kbd>–<kbd>6</kbd> панели · <kbd>A</kbd>/<kbd>D</kbd> штампы · <kbd>Пробел</kbd> пауза · <kbd>F</kbd> ускорить</li>
+            </ul>
+          </div>
+          <p class="tiny">Понедельник · День 1 · В 18:00 — совет директоров</p>
+        </div>
+      </div>
+
+      <div id="board" class="hidden"></div>
+      <div id="fade"></div>
+      <div id="held-stamp"><i class="st-handle"></i><i class="st-base"></i></div>
+      <div id="tooltip"></div>
+    </div>
+  </div>
+
+  <script src="js/util.js"></script>
+  <script src="js/font.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/sprites.js"></script>
+  <script src="js/market.js"></script>
+  <script src="js/content.js"></script>
+  <script src="js/sim.js"></script>
+  <script src="js/world.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/board.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
