@@ -476,5 +476,194 @@ const Content = (() => {
     });
   }
 
-  return { makeDoc, planDocs, CALLS, SP, intro, STAGE_TXT };
+  /* ---------- Сотрудники сами приходят к менеджеру ---------- */
+  const V = (text, how) => ({ text, how: how || 'back' });
+  const VISITS = {
+    complain: {
+      w: 4,
+      find(e) {
+        const n = G.emps.find(o => o !== e && !o.gone && !o.exiting && Math.abs(o.col - e.col) <= 1 && Math.abs(o.row - e.row) <= 1 && Sim.stage(o) >= 2);
+        return Sim.stage(e) <= 1 && n ? { n } : null;
+      },
+      make(e, { n }) {
+        return {
+          short: 'жалоба на соседа',
+          text: U.fill(`Босс, ${n.name} уже час орёт «ПРОДАВАЙ!» мне прямо в ухо. Я так работать не могу!`, e),
+          options: [
+            { label: 'Купить беруши ($40)', fn: () => { Sim.money(-40, 'office'); Sim.heal(e, 12); return V('Спасибо! Тишина… Прекрасная тишина.'); } },
+            { label: U.fill('Позову {name} на разговор', n), fn: () => { Sim.heal(e, 5); Sim.queue({ t: G.time + 2, type: 'fn', fn: () => { if (!G.visitor && NPC.canCall(n)) Sim.callIn(n); } }); return V('Спасибо, босс. Надеюсь, поможет.'); } },
+            { label: 'Терпи, все терпят', fn: () => { Sim.hurt(e, 12); return V(U.fill('…Понял{|а}. Пойду терпеть.', e)); } },
+          ],
+        };
+      },
+    },
+    idea: {
+      w: 1.5, once: true,
+      find: e => (Sim.stage(e) === 0 && (e.trait === 'normal' || e.trait === 'star') && G.cash > 3000 ? {} : null),
+      make(e) {
+        return {
+          short: 'гениальная идея',
+          text: 'Босс, у меня идея! Утки-космонавты! В шлеме, с флагом. Дети будут в восторге! Нужно всего $1 500 на прототип.',
+          options: [
+            { label: 'Финансировать ($1 500)', fn: () => {
+              Sim.money(-1500, 'office'); Sim.heal(e, 15);
+              const win = U.chance(0.6);
+              Sim.queue({ t: G.time + 60, type: 'fn', fn: () => {
+                if (win) { G.price += 0.6; G.rep += 4; Sim.toast(U.fill('Утки-космонавты {name} разлетаются с полок! Цена утки +$0.60.', e), 'good'); }
+                else Sim.toast(U.fill('Прототип утки-космонавта от {name} утонул в ванне. Деньги потрачены.', e), 'bad');
+              } });
+              return V('Вы не пожалеете! Через час покажу результат!');
+            } },
+            { label: 'Похвалить, но отказать', fn: () => { Sim.heal(e, 4); return V('Ну… может, в следующем квартале.'); } },
+            { label: 'Не отвлекай меня ерундой', fn: () => { Sim.hurt(e, 10); return V('Ладно. Пойду дальше считать уток.'); } },
+          ],
+        };
+      },
+    },
+    early: {
+      w: 3,
+      find: e => (e.sanity < 60 && e.trait !== 'spy' ? {} : null),
+      make(e) {
+        return {
+          short: 'просится домой',
+          text: 'Босс… можно я уйду пораньше? Голова раскалывается, перед глазами бегут котировки.',
+          options: [
+            { label: 'Иди домой, отдохни', fn: () => V(Sim.sendHome(e), 'home') },
+            { label: 'Таблетка и кофе ($20)', fn: () => { Sim.money(-20, 'office'); Sim.heal(e, 18); return V('Спасибо… Попробую дотянуть до вечера.'); } },
+            { label: 'Нет, работаем до 18:00', fn: () => { Sim.hurt(e, 12); return V('…Как скажете.'); } },
+          ],
+        };
+      },
+    },
+    whistle: {
+      w: 2.5,
+      find(e) {
+        if (e.trait === 'spy' || e.whistled || (G.flags.whistles || 0) >= 2) return null;
+        const s = G.emps.find(o => o.trait === 'spy' && !o.doubleAgent && !o.gone && !o.exiting);
+        return s ? { s } : null;
+      },
+      make(e, { s }) {
+        e.whistled = true;
+        G.flags.whistles = (G.flags.whistles || 0) + 1;
+        const truth = U.chance(0.7);
+        const inn = G.emps.filter(o => o !== e && o.trait !== 'spy' && !o.gone);
+        const acc = truth || !inn.length ? s : U.pick(inn);
+        const deed = U.fill(truth ? 'выносил{|а} дискеты из серверной' : 'шептал{ся|ась} с кем-то по телефону и озирал{ся|ась}', acc);
+        return {
+          short: 'хочет что-то рассказать',
+          text: U.fill(`Босс, не знаю, стоит ли говорить… Я видел{|а}, как ${acc.name} ${deed}.`, e),
+          options: [
+            { label: 'Спасибо, я проверю', fn: () => { acc.clues.push({ t: G.time, text: `по словам коллеги (${e.name}), ${deed}`, strong: false }); acc.suspicion = U.clamp(acc.suspicion + 22, 0, 100); return V('Только не говорите, что это я!'); } },
+            { label: 'Доносить нехорошо', fn: () => { Sim.hurt(e, 5); return V(U.fill('Я же как лучше хотел{|а}…', e)); } },
+          ],
+        };
+      },
+    },
+    probe: {
+      w: 3,
+      find: e => (e.trait === 'spy' && !e.doubleAgent && !e.probed ? {} : null),
+      make(e) {
+        e.probed = true;
+        return {
+          short: 'вопрос про чертежи',
+          text: 'Босс, а где у нас хранятся чертежи новой пищалки? Хочу… изучить. Для работы. Исключительно для работы.',
+          options: [
+            { label: 'В серверной, у Ахмета', fn: () => { Sim.queue({ t: G.time + 20, type: 'errand', eid: e.id, task: 'server', tries: 0 }); return V('Спасибо! Просто… для общего развития.'); } },
+            { label: 'Это коммерческая тайна', fn: () => { e.clues.push({ t: G.time, text: U.fill('выспрашивал{|а} у вас, где лежат чертежи', e), strong: false }); e.suspicion = U.clamp(e.suspicion + 22, 0, 100); return V(U.fill('Да-да, конечно. Я просто спросил{|а}.', e)); } },
+            { label: 'Дать «чертежи» (фальшивые)', fn: () => { e.fakeBlueprints = true; return V('О! Спасибо, босс! (Торопливо прячет папку в портфель.)'); } },
+          ],
+        };
+      },
+    },
+    crazy: {
+      w: 6,
+      find: e => (Sim.stage(e) >= 3 ? {} : null),
+      make(e) {
+        return {
+          short: 'В БЕЗУМИИ',
+          text: 'ПРОДАЙ МНЕ ЭТУ УТКУ, БОСС! ПРОДАЙ! Я ДАМ ЗА НЕЁ ТРИ УТКИ!!!',
+          options: [
+            { label: 'Сядь. Дыши. Медленно.', fn: () => { Sim.heal(e, 20); return V('…вдох… выдох… Где я? Почему у меня галстук на голове?'); } },
+            { label: 'Продать ему утку за $50', fn: () => { Sim.heal(e, 30); Sim.money(50, 'sales'); return V('ДААА! ОНА МОЯ! Спасибо, босс! *нежно прижимает утку*'); } },
+            { label: 'Домой. Немедленно.', fn: () => V(Sim.sendHome(e), 'home') },
+          ],
+        };
+      },
+    },
+    wfh: {
+      w: 2.5,
+      find: e => (e.trait === 'lazy' && !e.lazyFixed && !e.askedWfh ? {} : null),
+      make(e) {
+        e.askedWfh = true;
+        return {
+          short: 'просьба про удалёнку',
+          text: U.fill('Босс, можно я буду работать из дома? Тут шумно: кот, кулер, Ахмет… А дома я буду очень продуктивн{ым|ой}. Честно.', e),
+          options: [
+            { label: 'Ну ладно…', fn: () => { e.home = true; G.sentHome++; G.flags.wfhLazy = true; return V('Ура! То есть… спасибо, приступлю немедленно.', 'home'); } },
+            { label: 'Нет. Я слежу за выработкой.', fn: () => { Sim.hurt(e, 6); if (U.chance(0.6)) e.lazyFixed = true; return V(U.fill('Понял{|а}… Пойду работать. Наверное.', e)); } },
+          ],
+        };
+      },
+    },
+    thanks: {
+      w: 5,
+      find: e => (e.bonus > 0 && !e.thanked ? {} : null),
+      make(e) {
+        e.thanked = true;
+        return {
+          short: 'благодарность',
+          text: U.fill('Босс, спасибо за премию! Я вам кофе принес{|ла}. И весь отдел передаёт привет!', e),
+          options: [{ label: 'Спасибо! Работаем дальше', fn: () => { Sim.present().forEach(o => Sim.heal(o, 3)); G.rep += 1; return V('Так точно!'); } }],
+        };
+      },
+    },
+    birthday: {
+      w: 1.5, once: true,
+      find: e => (G.time >= U.T(12, 30) && G.time < U.T(16, 30) && G.emps.filter(o => !o.gone && o !== e).length ? {} : null),
+      make(e) {
+        const o = U.pick(G.emps.filter(q => !q.gone && q !== e));
+        return {
+          short: 'сбор на торт',
+          text: `Босс, сегодня ${o.name} празднует день рождения! Скинемся на торт? Нужно $100.`,
+          options: [
+            { label: 'Конечно! ($100)', fn: () => { Sim.money(-100, 'office'); Sim.present().forEach(q => Sim.heal(q, 8)); World.confetti(); return V('Ура! Будет торт в форме утки!'); } },
+            { label: 'Некогда, работаем', fn: () => { Sim.present().forEach(q => Sim.hurt(q, 3)); return V('Эх… Ладно.'); } },
+          ],
+        };
+      },
+    },
+    advance: {
+      w: 1, once: true,
+      find: e => (e.trait !== 'spy' ? {} : null),
+      make(e) {
+        return {
+          short: 'просьба об авансе',
+          text: 'Босс, можно аванс $300? У меня кредит за ванну в форме утки…',
+          options: [
+            { label: 'Выдать $300', fn: () => { Sim.money(-300, 'staff'); Sim.heal(e, 20); return V('Вы спасли мою ванну! Спасибо!'); } },
+            { label: 'Отказать', fn: () => { Sim.hurt(e, 8); return V('Понятно. Буду мыться в тазике.'); } },
+          ],
+        };
+      },
+    },
+  };
+  function pickVisit(cands) {
+    const opts = [];
+    for (const e of cands) {
+      for (const k in VISITS) {
+        const v = VISITS[k];
+        if (v.once && G.flags['visit_' + k]) continue;
+        const ctx = v.find(e);
+        if (ctx) opts.push({ e, k, ctx, w: v.w });
+      }
+    }
+    if (!opts.length) return null;
+    let r = Math.random() * opts.reduce((s, o) => s + o.w, 0);
+    let o = opts[0];
+    for (const q of opts) { r -= q.w; if (r <= 0) { o = q; break; } }
+    if (VISITS[o.k].once) G.flags['visit_' + o.k] = true;
+    return { e: o.e, r: VISITS[o.k].make(o.e, o.ctx) };
+  }
+
+  return { makeDoc, planDocs, CALLS, SP, intro, STAGE_TXT, pickVisit };
 })();

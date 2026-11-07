@@ -198,9 +198,11 @@ const Board = (() => {
     t += dt;
     Spr.use(ctx);
     const R = Spr.R;
-    R(0, 0, W, H, '#2a1a12');
-    for (let x = 0; x < W; x += 32) { R(x, 0, 30, 112, '#3a2418'); R(x + 3, 4, 24, 102, '#43291b'); R(x + 3, 4, 24, 1, '#55351f'); }
-    R(0, 0, W, 3, '#1a100a');
+    ctx.save();
+    ctx.translate(48, 32);
+    R(-48, -32, 480, 288, '#2a1a12');
+    for (let x = -48; x < 432; x += 32) { R(x, -32, 30, 144, '#3a2418'); R(x + 3, -28, 24, 134, '#43291b'); R(x + 3, -28, 24, 1, '#55351f'); }
+    R(-48, -32, 480, 3, '#1a100a');
     /* окно на закат */
     R(130, 8, 124, 72, '#1a100a');
     const bands = ['#f6c48a', '#f2a878', '#e08a6a', '#b06a7a', '#7a4a7a'];
@@ -221,8 +223,8 @@ const Board = (() => {
     R(190, 0, 4, 6, '#d4a24c'); R(176, 6, 32, 3, '#d4a24c');
     for (let i = 0; i < 5; i++) { R(178 + i * 7, 9, 2, 3, '#fff3b0'); R(177 + i * 7, 12, 4, 2, 'rgba(255,240,170,0.5)'); }
     /* пол */
-    R(0, 112, W, 112, '#4a1e18');
-    for (let y = 116; y < H; y += 8) for (let x = (y / 8) % 2 ? 0 : 8; x < W; x += 16) R(x, y, 8, 4, '#55241c');
+    R(-48, 112, 480, 144, '#4a1e18');
+    for (let y = 116; y < 256; y += 8) for (let x = (y / 8) % 2 ? -48 : -40; x < 432; x += 16) R(x, y, 8, 4, '#55241c');
 
     /* директора */
     const xs = [96, 144, 192, 240, 288];
@@ -249,8 +251,9 @@ const Board = (() => {
     const bob = Math.floor(t * 2) % 2;
     Spr.person(192, 206 + bob * 0, PLAYER_LOOK, { dir: 'up', frame: Math.floor(t * 2) });
     /* полумрак по краям */
+    ctx.restore();
     ctx.fillStyle = 'rgba(0,0,0,0.25)';
-    ctx.fillRect(0, 0, 24, H); ctx.fillRect(W - 24, 0, 24, H);
+    ctx.fillRect(0, 0, 40, H); ctx.fillRect(W - 40, 0, 40, H);
   }
 
   return { start, render, score };

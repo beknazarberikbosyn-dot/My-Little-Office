@@ -12,7 +12,8 @@ const CFG = {
   START_RUBBER: 380,
   PLAN: 3000,
   OVERHEAD: 1200,
-  BASE_DECAY: 0.085,
+  BASE_DECAY: 0.115,
+  PROD_MULT: 1.12,
 };
 
 const Sim = (() => {
@@ -99,12 +100,13 @@ const Sim = (() => {
       inbox: [], docLog: [], docStats: { correct: 0, wrong: 0, neutral: 0 }, docSeq: 410,
       sched: [], call: null, news: [], log: [], cd: {},
       musicUntil: 0, overtime: false, breakdownUntil: 0,
-      mods: { decay: 1, coffee: false }, contracts: {}, flags: {},
+      mods: { decay: 1, coffee: false, motivation: 1 }, contracts: {}, flags: {}, docsTransit: 0,
       leaks: 0, spiesCaught: 0, innocentFired: 0, firedCount: 0, sentHome: 0, bonuses: 0,
       chaosEvents: 0, speakerUses: 0, dialog: false, panel: null,
     };
     Market.init();
     buildSchedule();
+    NPC.init();
   }
 
   function queue(ev) {
@@ -165,6 +167,13 @@ const Sim = (() => {
       add(U.T(13, 30), 'news', { text: 'Энергон отчитался о рекордной прибыли. Как именно — никто не понял.' });
     }
     add(U.T(12, 0), 'news', { text: 'Облигации казначейства: доходность стабильна. Скучно, как всегда.' });
+    /* сотрудники сами приходят к менеджеру */
+    spread(7, U.T(9, 40), U.T(17, 10)).forEach(t => add(t, 'selfvisit'));
+    /* шпионы наведываются в серверную */
+    for (const e of G.emps) {
+      if (e.trait !== 'spy') continue;
+      spread(2, U.T(10, 0), U.T(16, 0)).forEach(t => add(t, 'errand', { eid: e.id, task: 'server', tries: 0 }));
+    }
     add(U.T(17, 30), 'fn', { fn: () => toast('До совета директоров 30 минут. Разберите документы и успокойте офис!', 'warn') });
     add(U.T(17, 50), 'fn', { fn: () => { toast('10 минут до совета директоров!', 'warn'); Sfx.play('alarm'); } });
   }
@@ -175,11 +184,11 @@ const Sim = (() => {
     switch (ev.type) {
       case 'doc': {
         const d = Content.makeDoc(ev.key);
-        if (d) receiveDoc(d);
+        if (d) NPC.deliverDoc(d);
         break;
       }
       case 'call': {
-        if (G.call || G.visitor) { ev.t = G.time + 8; if (ev.t < CFG.DAY_END - 5) queue(ev); break; }
+        if (G.call || G.dialog) { ev.t = G.time + 8; if (ev.t < CFG.DAY_END - 5) queue(ev); break; }
         const c = Content.CALLS[ev.key];
         if (c.cond && !c.cond()) break;
         ring(ev.key);
@@ -192,6 +201,7 @@ const Sim = (() => {
         G.rubber += ev.kg;
         G.flags.rubberOut = false; G.flags.rubberLow = false;
         toast(`Привезли резину: +${ev.kg} кг. Конвейер снова крутится.`, 'good');
+        NPC.courier(ev.kg);
         Sfx.play('coin');
         break;
       case 'breakdown':
@@ -200,6 +210,13 @@ const Sim = (() => {
         Sfx.play('alarm'); World.shake(0.6);
         break;
       case 'quit': quit(e); break;
+      case 'selfvisit':
+        if (!NPC.selfVisit() && G.time < U.T(17, 20)) { ev.t = G.time + 12; queue(ev); }
+        break;
+      case 'errand':
+        if (!e || e.gone || e.exiting) break;
+        if (!NPC.errand(e, ev.task) && ev.tries < 5) { ev.tries++; ev.t = G.time + 10; queue(ev); }
+        break;
       case 'fn': ev.fn(); break;
     }
   }
@@ -243,12 +260,12 @@ const Sim = (() => {
       id: 'coffee', name: 'Кофе всем', cd: 60,
       cost: () => (G.mods.coffee ? 60 : 120),
       desc: () => `+${G.mods.coffee ? 14 : 10} рассудка каждому в офисе`,
-      run() { present().forEach(e => heal(e, G.mods.coffee ? 14 : 10)); return 'Секретарша разносит кофе. Все немного выдохнули.'; },
+      run() { present().forEach(e => heal(e, G.mods.coffee ? 14 : 10)); NPC.galyaCoffee(); return 'Галя разносит кофе. Все немного выдохнули.'; },
     },
     {
       id: 'pizza', name: 'Пицца в офис', cd: 150, cost: () => 450,
-      desc: () => '+22 рассудка каждому',
-      run() { present().forEach(e => heal(e, 22)); World.confetti(); return 'Пицца приехала! Офис ликует.'; },
+      desc: () => '+16 рассудка каждому, и ещё два часа обеды на кухне лечат сильнее',
+      run() { present().forEach(e => heal(e, 16)); NPC.pizza(); return 'Курьер уже везёт пиццу! Офис ликует.'; },
     },
     {
       id: 'music', name: 'Спокойная музыка', cd: 100, cost: () => 0,
@@ -257,10 +274,10 @@ const Sim = (() => {
     },
     {
       id: 'psy', name: 'Вызвать психолога', cd: 120, cost: () => 700,
-      desc: () => '+40 рассудка трём самым безумным',
+      desc: () => 'Сеанс в переговорной: трое самых нервных получат +40 рассудка (~35 мин)',
       run() {
-        present().sort((a, b) => a.sanity - b.sanity).slice(0, 3).forEach(e => heal(e, 40));
-        return 'Психолог провёл сеанс «Отпусти свою внутреннюю утку». Помогло.';
+        const n = NPC.psySession();
+        return n ? `Доктор Утешев поднимается на лифте. На сеанс идут: ${n} чел.` : 'Психолог приехал, но все заняты. Он грустно пьёт кофе.';
       },
     },
     {
@@ -295,7 +312,8 @@ const Sim = (() => {
   function showClue(e, ev) {
     if (!e || e.gone || e.exiting) return;
     if (e.state !== 'seated') {
-      if (!ev.retry) { ev.retry = 1; ev.t = G.time + 15; queue(ev); }
+      ev.retry = (ev.retry || 0) + 1;
+      if (ev.retry < 5) { ev.t = G.time + 8; queue(ev); }
       return;
     }
     const cl = ev.clue;
@@ -315,6 +333,14 @@ const Sim = (() => {
   function leak(e) {
     if (!e || e.trait !== 'spy' || e.fled) return;
     if (e.gone || e.exiting) return;
+    if (e.fakeBlueprints) {
+      e.fakeBlueprints = false; e.evidence = true; e.suspicion = 100;
+      Market.jump('GOOS', -8);
+      e.clues.push({ t: G.time, text: U.fill('слил{|а} ГусьКорп ваши фальшивые чертежи — попал{ся|ась}!', e), strong: true });
+      toast(U.fill('ГусьКорп выпустила пищалку по фальшивым чертежам, которые вы дали {name}. Шпион раскрыт!', e), 'good', () => UI.openDossier(e));
+      addNews('ГусьКорп выпустила пищалку, которая играет гимн «Кря Индастриз». Конфуз!');
+      return;
+    }
     if (e.doubleAgent) {
       Market.jump('GOOS', -12); G.rep += 4;
       toast(U.fill('Двойной агент {name} слил{|а} ГусьКорп фальшивые чертежи! Их акции падают.', e), 'good');
@@ -392,6 +418,9 @@ const Sim = (() => {
     for (const e of P) {
       if (e.state === 'visit') continue;
       let d = CFG.BASE_DECAY * e.stress * mult;
+      if (NPC.catNear(e)) d *= 0.8;
+      const pe = e.state === 'seated' ? Plan.seat(e.id) : e;
+      if (Plan.roomAt(pe.x, pe.y + 20) && Plan.roomAt(pe.x, pe.y + 20).id === 'open') d *= 1 + Math.min(0.25, NPC.litter().length * 0.01);
       for (const o of P) {
         if (o === e || o.state !== 'seated') continue;
         const so = stage(o);
@@ -405,7 +434,7 @@ const Sim = (() => {
     const outs = G.emps.map(e => {
       let p = 0;
       if (!e.gone && !e.exiting && e.state === 'seated' && t >= e.sleepUntil) {
-        p = (e.skill / 60) * SF[stage(e)] * traitF(e) * (G.overtime ? 1.15 : 1);
+        p = (e.skill / 60) * SF[stage(e)] * traitF(e) * (G.overtime ? 1.15 : 1) * CFG.PROD_MULT * (G.mods.motivation || 1);
       }
       raw += p;
       return p;
@@ -460,17 +489,16 @@ const Sim = (() => {
     }
     Market.tick(t);
     G.rep = U.clamp(G.rep, 0, 100);
+    NPC.minute();
   }
 
   /* ---------- Разговоры в кабинете ---------- */
   function callIn(e) {
-    if (G.visitor) { toast('В кабинете уже кто-то есть. Сначала закончите разговор.', 'warn'); return false; }
-    if (e.gone || e.exiting || e.state !== 'seated') { toast(`${e.name} сейчас не за рабочим местом.`, 'warn'); return false; }
+    if (G.visitor) { toast(G.visitor === e ? U.fill('{name} уже идёт к вам.', e) : 'К вам уже кто-то идёт или сидит в кабинете. Сначала закончите разговор.', 'warn'); return false; }
+    if (!NPC.canCall(e)) { toast(`${e.name} сейчас не может подойти.`, 'warn'); return false; }
     G.visitor = e;
-    const p = World.standPos(e);
-    e.x = p.x; e.y = p.y;
-    e.state = 'walk'; e.purpose = 'office';
-    e.path = World.pathToOffice(e);
+    e.visitReason = null;
+    NPC.goOffice(e);
     World.say(e, stage(e) >= 3 ? 'ИДУ, БОСС! АУУУ!' : stage(e) >= 2 ? 'ЧТО?! ИДУ!' : 'Иду, босс!', 2);
     Sfx.play('click');
     log(`Вызван в кабинет: ${e.name}`);
@@ -479,15 +507,12 @@ const Sim = (() => {
 
   function endVisit(e, how) {
     G.visitor = null;
-    e.state = 'walk';
-    if (how === 'back') {
-      e.purpose = 'desk';
-      e.path = World.pathToDesk(e);
-    } else {
-      e.purpose = 'leave';
+    e.visitReason = null; e.pendingTalk = false;
+    if (how === 'back') NPC.backToDesk(e);
+    else {
       e.exiting = true;
       e.carryBox = how === 'fire';
-      e.path = World.pathLeave(e);
+      NPC.leave(e);
     }
   }
 
@@ -598,34 +623,33 @@ const Sim = (() => {
 
   function quit(e) {
     if (!e || e.gone || e.exiting) return;
-    if (e.state !== 'seated') { queue({ t: G.time + 10, type: 'quit', eid: e.id }); return; }
+    if (G.visitor === e || e.state === 'visit') { queue({ t: G.time + 10, type: 'quit', eid: e.id }); return; }
     e.quit = true; e.exiting = true; e.carryBox = true;
-    const p = World.standPos(e); e.x = p.x; e.y = p.y;
-    e.state = 'walk'; e.purpose = 'leave';
-    e.path = World.pathLeave(e, true);
+    NPC.leave(e);
     G.rep -= 2; Market.jump('GOOS', 2);
     e.salaryPaid = Math.round(e.salary * 0.7);
     toast(U.fill('{name} собрал{|а} вещи и уш{ёл|ла} в ГусьКорп.', e), 'bad');
   }
 
   function goHomeFromDesk(e) {
-    if (!e || e.gone || e.exiting || e.state !== 'seated') return false;
+    if (!e || e.gone || e.exiting || G.visitor === e || !(e.state === 'seated' || e.state === 'errand')) return false;
     e.home = true; e.exiting = true; G.sentHome++;
     e.sanity = 100;
-    const p = World.standPos(e); e.x = p.x; e.y = p.y;
-    e.state = 'walk'; e.purpose = 'leave';
-    e.path = World.pathLeave(e, true);
+    NPC.leave(e);
     return true;
   }
 
   /* Сотрудник дошёл до цели */
   function arrive(e) {
     if (e.purpose === 'office') {
-      e.state = 'visit'; e.dir = 'up';
-      if (G.dialog) e.pendingTalk = true;
-      else UI.openTalk(e);
+      e.state = 'visit'; e.dir = 'up'; e.pose = 'stand';
+      e.waitSince = G.time;
+      if (G.dialog || UI.isOpen()) {
+        e.pendingTalk = true;
+        toast(U.fill('{name} ждёт вас в кабинете.', e), 'visit', () => UI.openTalk(e));
+      } else UI.openTalk(e);
     } else if (e.purpose === 'desk') {
-      e.state = 'seated'; e.dir = 'down';
+      e.state = 'seated'; e.dir = 'down'; e.pose = 'stand'; e.carry = null; e.task = null;
     } else if (e.purpose === 'leave') {
       e.state = 'gone';
       e.gone = e.fired ? 'fired' : e.fled ? 'fled' : e.quit ? 'quit' : 'home';

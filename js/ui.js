@@ -76,7 +76,7 @@ const UI = (() => {
   /* ---------- Уведомления ---------- */
   const TOAST_ICON = {
     doc: () => Spr.iconURL('docs', 2), call: () => Spr.iconURL('phone', 2), news: () => Spr.iconURL('news', 2),
-    clue: () => Spr.markURL('alert', 3), bad: () => Spr.markURL('bang', 3), warn: () => Spr.markURL('alert', 3),
+    clue: () => Spr.markURL('alert', 3), visit: () => Spr.markURL('excl', 3), bad: () => Spr.markURL('bang', 3), warn: () => Spr.markURL('alert', 3),
     good: () => Spr.markURL('star', 3), info: () => Spr.markURL('chat', 3),
   };
   function toast(text, type = 'info', onClick) {
@@ -147,6 +147,7 @@ const UI = (() => {
     else if (cur === 'dossier') p.innerHTML = renderDossier(curArg);
     else if (cur === 'journal') p.innerHTML = renderJournal();
     else if (cur === 'help') p.innerHTML = renderHelp();
+    else if (cur === 'room') p.innerHTML = renderRoom(curArg);
     const sc2 = p.querySelector('.p-body');
     if (sc2 && !force) sc2.scrollTop = st;
     if (cur === 'terminal') drawSparks();
@@ -355,6 +356,7 @@ const UI = (() => {
     if (e.exiting) return 'уходит…';
     if (e.state === 'visit') return 'у вас в кабинете';
     if (e.state === 'walk') return e.purpose === 'office' ? 'идёт к вам' : 'идёт на место';
+    if (e.state === 'errand') return NPC.taskLabel(e);
     if (G.time < e.sleepUntil) return 'спит за столом';
     return 'за рабочим столом';
   };
@@ -371,6 +373,7 @@ const UI = (() => {
         <b>${U.esc(e.name)} ${U.esc(e.surname[0])}.</b><small>${U.esc(e.role)}</small>
         ${e.gone ? '' : sanBar(e.sanity)}
         <span class="lbl">${e.gone ? STATUS(e) : Content.STAGE_TXT[st]}</span>
+        ${!e.gone && e.state !== 'seated' ? `<span class="where">${STATUS(e)}</span>` : ''}
         <span class="out">${Math.round(e.produced)} уток</span>
         ${e.clues.length ? `<span class="flag" title="Есть наблюдения">!</span>` : ''}
       </div>`;
@@ -401,11 +404,83 @@ const UI = (() => {
       ${e.clues.length ? `<ul class="clues">${e.clues.slice().reverse().map(c => `<li><b>${U.time(c.t)}</b> ${U.esc(U.fill(c.text, e))}${c.strong ? ' <em>!</em>' : ''}</li>`).join('')}</ul>` : '<p class="muted">Пока ничего подозрительного не замечено.</p>'}
       ${e.doubleAgent ? '<p class="good">Двойной агент: сливает ГусьКорп фальшивки.</p>' : ''}
       <div class="d-btns">
-        ${!e.gone && !e.exiting && e.state === 'seated' ? `<button class="btn big" data-act="callin" data-id="${e.id}">Вызвать в кабинет</button>` : ''}
+        ${NPC.canCall(e) && G.visitor !== e ? `<button class="btn big" data-act="callin" data-id="${e.id}">Вызвать в кабинет</button>` : ''}
         ${e.state === 'visit' ? `<button class="btn big" data-act="talk" data-id="${e.id}">Продолжить разговор</button>` : ''}
         <button class="btn" data-act="staff">← Все сотрудники</button>
       </div>
     </div>`;
+    return html;
+  }
+
+  /* ---------- Комнаты ---------- */
+  function phoneBtn(id) {
+    const a = Sim.PHONE.find(p => p.id === id);
+    const left = (G.cd[id] || 0) - G.time;
+    const cost = a.cost();
+    return `<li><div><b>${a.name}</b><small>${a.desc()}</small></div><span class="cost">${cost ? U.money(cost) : 'бесплатно'}</span>
+      ${left > 0 ? `<span class="cd">через ${left} мин</span>` : `<button class="btn" data-act="phone" data-id="${id}" ${cost > G.cash ? 'disabled' : ''}>Сделать</button>`}</li>`;
+  }
+  const empRow = (e, extra) => `<li class="emp-row" data-act="dossier" data-id="${e.id}"><img src="${portrait(e.look, empMood(e))}" alt=""><span><b>${U.esc(e.name)} ${U.esc(e.surname)}</b><small>${U.esc(e.role)}</small></span><em>${extra}</em></li>`;
+  const KIT_TASKS = ['coffee', 'fridge', 'cooler', 'feed', 'sofa', 'lunch', 'pizza'];
+
+  function renderRoom(id) {
+    const ROOM = Plan.ROOMS.find(r => r.id === id) || { name: '' };
+    let html = '';
+    if (id === 'srv') {
+      const log = NPC.srvLog();
+      const ak = NPC.akhmet();
+      html = head('Серверная', 'журнал доступа · сисадмин Ахмет') + `<div class="p-body room">
+        <p class="room-note">Допуск в серверную есть только у <b>инженеров пищалок</b> и <b>аналитиков</b>. Ахмет замечает чужих, только когда сидит на месте${ak && ak.away ? ' — <b>сейчас его нет</b>, он ушёл чинить технику' : ''}.</p>
+        ${log.length ? `<table class="srv"><tr><th>Время</th><th>Кто</th><th>Допуск</th><th>Ахмет</th></tr>${log.map(l => `<tr class="${l.ok ? '' : 'bad'}" data-act="dossier" data-id="${l.eid}"><td>${U.time(l.t)}</td><td><b>${U.esc(l.name)}</b><small>${U.esc(l.role)}</small></td><td>${l.ok ? 'есть' : 'НЕТ'}</td><td>${l.seen ? 'видел' : 'не видел'}</td></tr>`).join('')}</table>` : '<p class="muted">Сегодня в серверную ещё никто не заходил.</p>'}
+        <p class="muted small">Кликните по строке, чтобы открыть досье. Без допуска сюда иногда заходят и честные люди — за зарядкой или от скуки.</p>
+      </div>`;
+    } else if (id === 'wc') {
+      const inside = G.emps.filter(e => e.task === 'wc' && !e.gone);
+      html = head('Туалет', 'две кабинки, вечная очередь') + `<div class="p-body room">
+        ${inside.length ? `<ul class="emp-list">${inside.map(e => empRow(e, e.hidden ? `сидит ${G.time - e.taskStart} мин` : 'идёт туда')).join('')}</ul>` : '<p class="muted">Обе кабинки свободны.</p>'}
+        <p class="room-note">Нормальный визит — 5 минут. Если кто-то сидит по полчаса — это повод присмотреться к его выработке.</p>
+      </div>`;
+    } else if (id === 'kit') {
+      const c = NPC.cat();
+      const here = G.emps.filter(e => !e.gone && KIT_TASKS.includes(e.task));
+      const where = c.onDesk ? 'сидит на вашем столе' : c.moving ? 'куда-то идёт' : c.pose === 'loaf' ? 'спит' : c.pose === 'eat' ? 'ест' : 'сидит и наблюдает';
+      html = head('Комната отдыха', 'кофе, диван, кулер и кот') + `<div class="p-body room">
+        <div class="cat-card"><b>Кот Кексик</b> — ${where}.
+          <div class="d-row"><span>Сытость</span>${sanBar(100 - c.hunger)}<b>${NPC.catHungry() ? 'голоден!' : 'сыт'}</b></div>
+          <small>Рядом с Кексиком сотрудники сходят с ума медленнее. Голодный кот мяукает у миски, а потом садится вам на бумаги.</small>
+          <button class="btn" data-act="feedcat" ${NPC.catHungry() ? '' : 'disabled'}>Попросить покормить Кексика</button>
+        </div>
+        <h4>Сейчас на кухне</h4>
+        ${here.length ? `<ul class="emp-list">${here.map(e => empRow(e, NPC.taskLabel(e))).join('')}</ul>` : '<p class="muted">Никого — все работают. Подозрительно.</p>'}
+        <h4>Заказать</h4><ul class="phone-list">${phoneBtn('coffee')}${phoneBtn('pizza')}${phoneBtn('music')}</ul>
+      </div>`;
+    } else if (id === 'meet') {
+      const meetLeft = (G.flags.meetUntil || 0) - G.time, psyLeft = (G.flags.psyUntil || 0) - G.time;
+      const cd = (G.cd.meeting || 0) - G.time;
+      html = head('Переговорная', 'планёрки и психолог') + `<div class="p-body room">
+        <p class="room-note">${meetLeft > 0 ? `Идёт планёрка, ещё ${meetLeft} мин.` : psyLeft > 0 ? `Идёт сеанс психолога, ещё ${psyLeft} мин.` : 'Переговорная свободна.'}</p>
+        <ul class="phone-list">
+          <li><div><b>Провести планёрку</b><small>Все свободные сотрудники на 24 минуты уходят в переговорную. Конвейер без них простаивает, зато каждому +15 рассудка и +6% к выработке до конца дня.</small></div>
+          <span class="cost">бесплатно</span>${cd > 0 ? `<span class="cd">через ${cd} мин</span>` : `<button class="btn" data-act="meeting" ${meetLeft > 0 || psyLeft > 0 ? 'disabled' : ''}>Собрать</button>`}</li>
+          ${phoneBtn('psy')}
+        </ul>
+      </div>`;
+    } else if (id === 'store') {
+      const el = Math.max(30, G.time - CFG.DAY_START);
+      const kgPerH = (G.ducks / el) * 60 * CFG.KG_PER_DUCK;
+      const pending = G.sched.filter(ev => ev.type === 'deliver');
+      html = head('Склад резины', 'мастер цеха Михалыч') + `<div class="p-body room">
+        <div class="crt small-crt">
+          <div class="ln"><span>На складе</span><i></i><b>${Math.round(G.rubber)} кг</b></div>
+          <div class="ln"><span>Расход</span><i></i><b>≈${Math.round(kgPerH)} кг/час</b></div>
+          <div class="ln ${G.rubber / Math.max(1, kgPerH) < 0.7 ? 'down' : ''}"><span>Хватит примерно на</span><i></i><b>${kgPerH > 1 ? Math.round(G.rubber / kgPerH * 60) + ' мин' : '—'}</b></div>
+          <div class="ln"><span>Едет поставок</span><i></i><b>${pending.length ? pending.map(p => `${p.kg} кг в ${U.time(p.t)}`).join(', ') : 'нет'}</b></div>
+          ${G.time < G.breakdownUntil ? `<div class="ln down"><span>Конвейер</span><i></i><b>СЛОМАН до ${U.time(G.breakdownUntil)}</b></div>` : ''}
+        </div>
+        <p class="room-note">Обычную резину ($3/кг) закупает отдел снабжения — счёт придёт в лоток документов. Срочная — дороже, но приедет быстро.</p>
+        <ul class="phone-list">${phoneBtn('rubber')}</ul>
+      </div>`;
+    } else html = head(ROOM.name);
     return html;
   }
 
@@ -422,6 +497,8 @@ const UI = (() => {
       <ul>
         <li><b>Документы</b> падают в лоток на столе. Возьмите штамп «СОГЛАСОВАНО» или «ОТКАЗАНО» и шлёпните по бумаге. Ищите подвох: подставные фирмы, офшоры, пузыри.</li>
         <li><b>Сотрудники</b> работают за стеклом. Кликните по любому — откроется досье. Вызывайте подозрительных на ковёр: расспросите, обыщите портфель, премируйте, оштрафуйте или увольте.</li>
+        <li><b>Офис живёт сам.</b> Сотрудники ходят за кофе, болтают у кулера, кормят кота, сидят в туалете и сами приходят к вам с жалобами, идеями и просьбами. Галя приносит документы, Ахмет чинит принтер, тётя Валя убирает мусор.</li>
+        <li><b>Комнаты.</b> Кликните по комнате: в серверной — журнал доступа (кто туда ходил без допуска), в переговорной — планёрка, на кухне — кофе и кот, на складе — запас резины, в туалете видно, кто там засел.</li>
         <li><b>Шпионы ГусьКорп</b> фотографируют чертежи и копируют дискеты. Пока шпион на месте — будут утечки.</li>
         <li><b>Лентяи</b> спят и раскладывают «Косынку». Сравнивайте выработку в досье.</li>
         <li><b>Безумие.</b> Полоска над головой — рассудок. Чем позже, тем быстрее люди сходят с ума и заражают соседей. Без вас к вечеру тут будет Уолл-стрит: вопли, летающие деньги, галстуки на головах. Помогают кофе, пицца, музыка, психолог, разговор по душам и отгулы.</li>
@@ -465,6 +542,13 @@ const UI = (() => {
     else if (a === 'answer') answerCall();
     else if (a === 'dossier') { Sfx.play('click'); openPanel('dossier', G.emps[+b.dataset.id]); }
     else if (a === 'staff') { Sfx.play('click'); openPanel('staff'); }
+    else if (a === 'meeting') {
+      if (G.time < (G.cd.meeting || 0)) return;
+      const n = NPC.meeting();
+      G.cd.meeting = G.time + 150;
+      Sim.toast(n ? `Планёрка! В переговорную идут ${n} чел. Конвейер подождёт.` : 'Все заняты — планёрку собрать не удалось.', n ? 'good' : 'warn');
+      Sfx.play('open'); close();
+    } else if (a === 'feedcat') { NPC.clickCat(); render(true); }
     else if (a === 'callin') { const e = G.emps[+b.dataset.id]; if (Sim.callIn(e)) close(); }
     else if (a === 'talk') { const e = G.emps[+b.dataset.id]; close(); openTalk(e); }
   }
@@ -537,6 +621,8 @@ const UI = (() => {
 
   function openTalk(e, text) {
     if (e.state !== 'visit') return;
+    e.pendingTalk = false;
+    if (e.visitReason && !text) { openReason(e); return; }
     const st = Sim.stage(e);
     const opts = [];
     if (!e.asked) opts.push({ label: 'Как продвигается работа?', fn: () => openTalk(e, Sim.askWork(e)) });
@@ -568,6 +654,16 @@ const UI = (() => {
         { label: 'Нет, подождите', fn: () => decide(e) },
       ],
       kind: 'talk',
+    });
+  }
+  function openReason(e) {
+    const r = e.visitReason;
+    dialog({
+      speaker: speakerOf(e), text: r.text, kind: 'talk',
+      options: r.options.map(o => ({
+        label: o.label, cls: o.cls,
+        fn: () => { const res = o.fn(e) || {}; e.visitReason = null; Sfx.play('click'); finish(e, res.how || 'back', res.text); },
+      })).concat([{ label: 'Сначала другое… (расспросить)', fn: () => { e.visitReason = null; openTalk(e, 'Ну… давайте. Что вы хотели спросить?'); } }]),
     });
   }
   function finish(e, how, reply) {
@@ -619,8 +715,7 @@ const UI = (() => {
       $('b-speed').classList.toggle('on', G.speed > 1);
       $('b-pause').classList.toggle('on', G.paused);
     }
-    if (!D.open && G.phase === 'day' && G.visitor && G.visitor.state === 'visit' && G.visitor.pendingTalk) {
-      G.visitor.pendingTalk = false;
+    if (!D.open && !cur && G.phase === 'day' && G.visitor && G.visitor.state === 'visit' && G.visitor.pendingTalk) {
       openTalk(G.visitor);
     }
     if (D.open && D.shown < D.full.length) {

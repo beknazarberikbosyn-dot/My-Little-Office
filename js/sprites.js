@@ -23,6 +23,22 @@ const Spr = (() => {
   /* ---------- Человечек ---------- */
   function person(x, y, L, o = {}) {
     x = Math.round(x); y = Math.round(y);
+    if (o.sit) {
+      /* сидит: бёдра к зрителю, туловище чуть ниже */
+      const leg = L.skirt || L.pants;
+      const r = person(x, y + 6, L, Object.assign({}, o, { sit: false, noLegs: true }));
+      if ((o.dir || 'down') !== 'up') {
+        R(x - 4, y - 1, 8, 3, leg); R(x - 4, y - 1, 8, 1, U.shade(leg, 20));
+        R(x - 4, y + 2, 3, 2, '#1e1a18'); R(x + 1, y + 2, 3, 2, '#1e1a18');
+      }
+      return r;
+    }
+    if (o.crouch) {
+      R(x - 5, y - 1, 10, 2, 'rgba(0,0,0,0.2)');
+      R(x - 5, y - 3, 4, 3, L.pants); R(x + 1, y - 3, 4, 3, L.pants);
+      R(x - 5, y - 1, 3, 1, '#1e1a18'); R(x + 2, y - 1, 3, 1, '#1e1a18');
+      return person(x, y + 3, L, Object.assign({}, o, { crouch: false, noLegs: true }));
+    }
     const dir = o.dir || 'down';
     const f = o.frame || 0;
     const skin = L.skin, skinD = U.shade(L.skin, -30);
@@ -78,6 +94,38 @@ const Spr = (() => {
       R(x - 7, top + 1, 2, 5, body); R(x + 5, top + 1, 2, 5, body);
       R(x - 7, top + 3, 14, 8, '#c49a6c'); R(x - 7, top + 3, 14, 1, '#d9b384'); R(x - 7, top + 10, 14, 1, '#9b764d');
       R(x - 4, top + 1, 2, 3, '#3f8f3a'); R(x + 1, top, 2, 3, '#f3e2a0'); R(x + 3, top + 1, 1, 2, '#ffd23f');
+    } else if (arms === 'crate') {
+      R(x - 7, top + 1, 2, 5, body); R(x + 5, top + 1, 2, 5, body);
+      R(x - 7, top + 1, 14, 10, '#8a6a3a'); R(x - 7, top + 1, 14, 1, '#b08a50'); R(x - 6, top + 4, 12, 1, '#6a4a22');
+      R(x - 6, top + 7, 12, 1, '#6a4a22'); R(x - 2, top + 3, 4, 3, '#2a2a2a');
+    } else if (arms === 'cup' || arms === 'docs') {
+      R(x - 7, top + 1, 2, 7, body); R(x - 7, top + 8, 2, 2, skin);
+      R(x + 4, top + 2, 2, 4, body); R(x + 3, top + 5, 2, 2, skin);
+      if (arms === 'cup') { R(x + 4, top + 2, 4, 4, '#f4f4f4'); R(x + 4, top + 2, 4, 1, '#5a3a22'); R(x + 8, top + 3, 1, 2, '#f4f4f4'); }
+      else { R(x + 2, top + 1, 7, 9, '#fbf6e8'); R(x + 3, top + 3, 5, 1, '#999'); R(x + 3, top + 5, 4, 1, '#999'); R(x + 3, top + 7, 5, 1, '#c0392b'); }
+    } else if (arms === 'tray' || arms === 'pizza') {
+      R(x - 7, top + 1, 2, 5, body); R(x + 5, top + 1, 2, 5, body);
+      R(x - 7, top + 5, 2, 2, skin); R(x + 5, top + 5, 2, 2, skin);
+      if (arms === 'tray') {
+        R(x - 8, top + 5, 16, 2, '#9aa0aa');
+        for (let k = 0; k < 3; k++) { R(x - 6 + k * 5, top + 1, 3, 4, '#f4f4f4'); R(x - 6 + k * 5, top + 1, 3, 1, '#5a3a22'); }
+      } else {
+        R(x - 8, top + 2, 16, 5, '#e8c07a'); R(x - 8, top + 2, 16, 1, '#f5d9a0'); R(x - 2, top + 3, 4, 2, '#c0392b');
+      }
+    } else if (arms === 'mop') {
+      R(x - 7, top + 1, 2, 7, body); R(x - 7, top + 8, 2, 2, skin);
+      R(x + 5, top + 1, 2, 5, body); R(x + 5, top + 5, 2, 2, skin);
+      const sw = (f % 2) * 2 - 1;
+      R(x + 6, top - 2, 1, 21, '#a0703a');
+      R(x + 3 + sw, y - 2, 8, 3, '#d8d8e0'); R(x + 3 + sw, y + 1, 8, 1, '#a8a8b0');
+    } else if (arms === 'clip') {
+      R(x - 7, top + 1, 2, 7, body); R(x - 7, top + 8, 2, 2, skin);
+      R(x + 2, top + 1, 6, 8, '#8a5a2a'); R(x + 3, top + 2, 4, 6, '#fff'); R(x + 3, top + 3, 3, 1, '#888');
+    } else if (arms === 'hammer') {
+      const up = f % 2;
+      R(x - 7, top + 1, 2, 7, body); R(x - 7, top + 8, 2, 2, skin);
+      R(x + 5, top - 4 + up * 4, 2, 7, body); R(x + 5, top - 6 + up * 4, 2, 2, skin);
+      R(x + 6, top - 10 + up * 4, 1, 6, '#8a5a2a'); R(x + 4, top - 11 + up * 4, 5, 2, '#777');
     } else {
       R(x - 7, top + 1, 2, 7, body); R(x + 5, top + 1, 2, 7, bodyD);
       R(x - 7, top + 8, 2, 2, skin); R(x + 5, top + 8, 2, 2, skin);
@@ -154,6 +202,48 @@ const Spr = (() => {
       R(x + 5, H + 2, 1, 2 + (f % 2), tie);
     }
     if (o.sweat) { R(x + 5, H + 1 + (f % 3), 1, 2, '#8fd3ff'); }
+    if (L.beard && dir !== 'up') { R(x - 4, H + 5, 8, 3, L.hair); R(x - 1, H + 6, 2, 1, '#7a1f1f'); }
+    if (L.cap) {
+      R(x - 5, H - 2, 10, 3, L.cap); R(x - 4, H - 3, 8, 1, L.cap);
+      if (dir === 'down') R(x - 5, H + 1, 10, 1, U.shade(L.cap, -30));
+      else if (dir === 'left') R(x - 7, H, 3, 1, U.shade(L.cap, -30));
+      else if (dir === 'right') R(x + 4, H, 3, 1, U.shade(L.cap, -30));
+    }
+    if (L.apron && dir !== 'up') { R(x - 3, top + 2, 6, 7, L.apron); R(x - 3, top + 2, 6, 1, U.shade(L.apron, 25)); }
+  }
+
+  /* ---------- Кот ---------- */
+  function cat(x, y, pose, left, f) {
+    x = Math.round(x); y = Math.round(y);
+    const C = '#e8994a', D = '#b8682a', Wt = '#fff1dc', K = '#2a1a10';
+    const P = (dx, dy, w, h, col) => R(left ? x - dx - w : x + dx, y + dy, w, h, col);
+    R(x - 5, y - 1, 10, 2, 'rgba(0,0,0,0.18)');
+    if (pose === 'sit') {
+      P(-3, -6, 6, 6, C); P(-1, -5, 2, 4, Wt);
+      P(-3, -11, 6, 5, C); P(-3, -12, 1, 1, C); P(2, -12, 1, 1, C);
+      P(-2, -9, 1, 1, K); P(1, -9, 1, 1, K); P(0, -8, 1, 1, '#e86a7a');
+      P(-2, -11, 1, 1, D); P(1, -11, 1, 1, D);
+      const tw = f % 4 < 2 ? 0 : 1;
+      P(3, -2, 3, 1, C); P(5, -4 - tw, 1, 2 + tw, C);
+      return;
+    }
+    if (pose === 'loaf') {
+      P(-5, -4, 10, 4, C); P(-3, -4, 1, 2, D); P(0, -4, 1, 2, D);
+      P(2, -7, 4, 4, C); P(2, -8, 1, 1, C); P(5, -8, 1, 1, C);
+      P(3, -5, 1, 1, K); P(5, -5, 1, 1, K);
+      P(-6, -1, 9, 1, D);
+      return;
+    }
+    const eat = pose === 'eat';
+    P(-5, -6, 9, 4, C); P(-3, -6, 1, 2, D); P(0, -6, 1, 2, D); P(2, -6, 1, 2, D);
+    P(-4, -3, 7, 1, U.shade(C, -12));
+    if (pose === 'walk' && f % 2) { P(-4, -2, 1, 2, C); P(2, -2, 1, 2, C); P(-2, -2, 1, 2, D); P(3, -2, 1, 2, D); }
+    else { P(-3, -2, 1, 2, C); P(3, -2, 1, 2, C); P(-4, -2, 1, 2, D); P(1, -2, 1, 2, D); }
+    const hy = eat ? -5 : -9;
+    P(3, hy, 4, 4, C); P(3, hy - 1, 1, 1, C); P(6, hy - 1, 1, 1, C);
+    P(5, hy + 1, 1, 1, K); P(7, hy + 2, 1, 1, '#e86a7a'); P(4, hy + 2, 2, 1, Wt);
+    const tw = f % 2;
+    P(-7, -8 - tw, 1, 3 + tw, C); P(-6, -6, 1, 1, C);
   }
 
   /* ---------- Утка ---------- */
@@ -334,6 +424,10 @@ const Spr = (() => {
     chat: bake(['.#####.', '#GGGGG#', '#GWGWG#', '#GGGGG#', '.##G##.', '...#...', '.......'], { '#': '#1d4f1d', G: '#5bd16a', W: '#fff' }),
     heart: bake(['.......', '.##.##.', '#RR#RR#', '#RRRRR#', '.#RRR#.', '..#R#..', '...#...'], { '#': '#5a1010', R: '#ff5a6e' }),
     money: bake(['#######', '#GGGGG#', '#GG$GG#', '#G$$$G#', '#GG$GG#', '#GGGGG#', '#######'], { '#': '#0f3d17', G: '#5cb85c', $: '#e8ffe0' }),
+    cup: bake(['.......', '.#####.', '#WWWWW#', '#BBBBB#', '#WWWWW##', '#WWWWW#', '.#####.'].map(r => r.slice(0, 7)), { '#': '#3b2414', W: '#ffffff', B: '#7a4a2a' }),
+    note: bake(['...##..', '...#.#.', '...#..#', '...#...', '.###...', '####...', '.##....'], { '#': '#3b6ea8' }),
+    paw: bake(['.#...#.', '.#.#.#.', '.......', '..###..', '.#####.', '.#####.', '..#.#..'], { '#': '#e8994a' }),
+    excl: bake(['.#####.', '#YYKYY#', '#YYKYY#', '#YYKYY#', '#YYYYY#', '#YYKYY#', '.#####.'], { '#': '#3b2414', Y: '#ffd23f', K: '#3b2414' }),
     star: bake(['...#...', '..#Y#..', '##YYY##', '.#YYY#.', '.#Y#Y#.', '#.#.#.#', '.......'], { '#': '#6b4a00', Y: '#ffd23f' }),
   };
   function mark(name, x, y) { const m = MARKS[name]; if (m) c.drawImage(m, Math.round(x), Math.round(y)); }
@@ -373,5 +467,5 @@ const Spr = (() => {
     return cv.toDataURL();
   }
 
-  return { use, ctx, R, bake, person, duck, iconURL, mark, markURL, portrait, portraitURL, DUCK };
+  return { use, ctx, R, bake, person, cat, duck, iconURL, mark, markURL, portrait, portraitURL, DUCK };
 })();

@@ -128,6 +128,7 @@ kbd {
 .t-warn { background: #ffe6b8; }
 .t-call { background: #ffe0e0; border-color: #c0392b; animation: slideIn 0.25s, pulse 0.9s infinite; }
 .t-news { background: #e0ecff; border-color: #2c3e7a; }
+.t-visit { background: #fff4c8; border-color: #b07a10; }
 
 /* ---------- Подсказка и реплики ---------- */
 #tooltip {
@@ -389,6 +390,29 @@ ul.news li.big { color: #ffe46a; }
   background: #fff3d6; border: 0.12rem solid #8a4a1a; padding: 0.25rem 0.3rem; line-height: 1.5;
 }
 #dlg-title { font-size: 0.7rem; color: #7a4a1a; text-align: center; margin-top: 0.2rem; line-height: 1.2; }
+
+/* ---------- Комнаты ---------- */
+.room { font-size: 0.86rem; }
+.room-note { background: #fff3d6; border: 0.12rem dashed #d0a060; padding: 0.45rem 0.6rem; margin: 0 0 0.6rem; line-height: 1.35; }
+.room h4 { font-family: 'Press Start 2P', monospace; font-size: 0.55rem; margin: 0.8rem 0 0.35rem; color: #6b3410; }
+table.srv { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+table.srv th { text-align: left; font-weight: 600; color: #6b3410; border-bottom: 0.12rem solid #b06a2a; padding: 0.2rem 0.3rem; }
+table.srv td { padding: 0.25rem 0.3rem; border-bottom: 1px dotted #d0a060; }
+table.srv td small { display: block; color: #8a5a2a; font-size: 0.68rem; }
+table.srv tr[data-act] { cursor: pointer; }
+table.srv tr[data-act]:hover { background: #ffe9b8; }
+table.srv tr.bad td:nth-child(3) { color: #b01a10; font-weight: 700; }
+.emp-list { list-style: none; padding: 0; margin: 0; }
+.emp-row { display: flex; gap: 0.6rem; align-items: center; padding: 0.3rem; border-bottom: 1px dotted #d0a060; cursor: pointer; }
+.emp-row:hover { background: #ffe9b8; }
+.emp-row img { width: 2.4rem; background: #8fc7e8; border: 0.1rem solid #8a4a1a; }
+.emp-row span { flex: 1; }
+.emp-row small { display: block; color: #8a5a2a; font-size: 0.7rem; }
+.emp-row em { font-style: normal; color: #6b3410; font-size: 0.78rem; }
+.cat-card { background: #ffe9cc; border: 0.14rem solid #e8994a; padding: 0.5rem 0.65rem; }
+.cat-card small { display: block; color: #7a4a1a; margin: 0.2rem 0 0.45rem; }
+.card .where { font-size: 0.64rem; color: #3b6ea8; }
+.small-crt { padding: 0.55rem 0.8rem; margin-bottom: 0.6rem; }
 
 /* ---------- Пауза, заставка, конец дня ---------- */
 #pause {

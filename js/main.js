@@ -135,6 +135,7 @@ const Game = (() => {
       get G() { return G; },
       skip(min) { for (let i = 0; i < min && G.phase === 'day'; i++) { Sim.minute(); G.time++; if (G.time >= CFG.DAY_END) { endOfDay(); break; } } },
       start,
+      speed(n) { G.speed = n; },
     };
     requestAnimationFrame(loop);
   }
