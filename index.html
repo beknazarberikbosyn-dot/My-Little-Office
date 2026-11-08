@@ -6,9 +6,9 @@
   <title>My Little Office — пиксельный симулятор менеджера</title>
   <meta name="description" content="Пиксельная игра: управляйте офисом фабрики резиновых уток, ловите шпионов конкурентов, штампуйте документы и не дайте офису превратиться в Уолл-стрит.">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;500;600;700&family=Press+Start+2P&display=swap" rel="stylesheet">
+  <link rel="preload" href="fonts/Nunito.woff" as="font" type="font/woff" crossorigin>
+  <link rel="preload" href="fonts/RussoOne.woff" as="font" type="font/woff" crossorigin>
+  <link rel="preload" href="fonts/Oswald.woff" as="font" type="font/woff" crossorigin>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -58,21 +58,23 @@
           <img class="duck-img title-duck" alt="">
           <h1>MY LITTLE<br>OFFICE</h1>
           <p class="sub">«Кря Индастриз» — резиновые утки с 1987 года</p>
-          <p class="pitch">Вы — новый менеджер. Штампуйте документы, ловите шпионов ГусьКорп, следите за деньгами и не дайте офису сойти с ума до 18:00.</p>
+          <p class="pitch">Вы — новый менеджер. Штампуйте документы, нанимайте людей, ловите шпионов ГусьКорп, читайте газету и не дайте офису сойти с ума. День за днём.</p>
           <div class="title-btns">
+            <button class="btn big hidden" id="btn-continue">Продолжить</button>
             <button class="btn big" id="btn-start">Начать рабочий день</button>
             <button class="btn" id="btn-how">Как играть</button>
           </div>
           <div id="how" class="hidden">
             <ul>
               <li><b>Клик по сотруднику</b> за стеклом — досье и вызов «на ковёр».</li>
-              <li><b>Лоток на столе</b> — документы: штамп «СОГЛАСОВАНО» или «ОТКАЗАНО».</li>
+              <li><b>Лоток на столе</b> — рабочий стол: документы, резюме кандидатов и газета «Утренний Кряк» в одном окне.</li>
               <li><b>Монитор</b> — деньги и биржа. <b>Телефон</b> — кофе, пицца, психолог, резина.</li>
               <li><b>Полоска над головой</b> — рассудок. Ноль — и человек становится брокером с Уолл-стрит.</li>
-              <li><kbd>1</kbd>–<kbd>6</kbd> панели · <kbd>A</kbd>/<kbd>D</kbd> штампы · <kbd>Пробел</kbd> пауза · <kbd>F</kbd> ускорить</li>
+              <li><b>В 18:00</b> — совет директоров, а утром — следующий день: деньги, люди, шпионы и репутация никуда не деваются.</li>
+              <li><kbd>1</kbd>–<kbd>6</kbd> панели · <kbd>A</kbd>/<kbd>D</kbd> штампы · <kbd>N</kbd> газета · <kbd>Пробел</kbd> пауза · <kbd>F</kbd> ускорить</li>
             </ul>
           </div>
-          <p class="tiny">Понедельник · День 1 · В 18:00 — совет директоров</p>
+          <p class="tiny" id="title-note">Понедельник · День 1 · В 18:00 — совет директоров</p>
         </div>
       </div>
 
@@ -89,8 +91,10 @@
   <script src="js/data.js"></script>
   <script src="js/map.js"></script>
   <script src="js/sprites.js"></script>
+  <script src="js/news.js"></script>
   <script src="js/market.js"></script>
   <script src="js/content.js"></script>
+  <script src="js/hire.js"></script>
   <script src="js/sim.js"></script>
   <script src="js/npc.js"></script>
   <script src="js/world.js"></script>

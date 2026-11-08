@@ -3,7 +3,7 @@
 const UI = (() => {
   const $ = id => document.getElementById(id);
   let cur = null, curArg = null, refreshT = 0, cashShown = 0;
-  let held = null, stamping = false, docSel = 0, lastInboxLen = -1;
+  let held = null, stamping = false, docSel = 0, lastInboxLen = -1, lastNewsLen = -1, docTab = 'docs', newsMark = 0;
   const portraitCache = new Map();
   let duckURL = '';
 
@@ -111,7 +111,8 @@ const UI = (() => {
     if (cur !== id) Sfx.play('open');
     cur = id; curArg = arg;
     G.panel = id;
-    if (id === 'docs') { docSel = 0; lastInboxLen = -1; }
+    if (id === 'docs') { docSel = 0; lastInboxLen = -1; lastNewsLen = -1; docTab = arg || (cur === 'docs' ? docTab : pickTab()); }
+    if ((id === 'docs' && docTab === 'news') || (id === 'terminal' && arg === 'news')) newsMark = G.newsSeen || 0;
     $('modal').classList.remove('hidden');
     $('panel').className = 'wood panel-' + id;
     render(true);
@@ -134,9 +135,14 @@ const UI = (() => {
     const p = $('panel');
     if (!cur) return;
     if (cur === 'docs') {
-      if (!force && (stamping || G.inbox.length === lastInboxLen)) return;
-      lastInboxLen = G.inbox.length;
+      if (!force && (stamping || (G.inbox.length === lastInboxLen && G.news.length === lastNewsLen))) return;
+      const sc = p.querySelector('.p-body');
+      const st = sc ? sc.scrollTop : 0;
+      lastInboxLen = G.inbox.length; lastNewsLen = G.news.length;
       p.innerHTML = renderDocs();
+      const sc2 = p.querySelector('.p-body');
+      if (sc2 && !force) sc2.scrollTop = st;
+      if (docTab === 'news') G.newsSeen = G.news.length;
       return;
     }
     const sc = p.querySelector('.p-body');
@@ -153,40 +159,103 @@ const UI = (() => {
     if (cur === 'terminal') drawSparks();
   }
 
-  /* ---------- Документы ---------- */
-  function renderDocs() {
-    let html = head('Входящие документы', `${G.inbox.length} в лотке`);
-    if (!G.inbox.length) {
-      return html + `<div class="p-body docs-empty"><img src="${duckURL}" class="duck-big" alt=""><p>Лоток пуст. Можно выдохнуть… пока.</p><p class="muted">Новые документы приходят в течение дня — вы услышите шелест бумаги.</p></div>`;
-    }
-    if (docSel >= G.inbox.length) docSel = 0;
-    const d = G.inbox[docSel];
-    const tabs = G.inbox.map((x, i) => `<button class="doc-tab ${i === docSel ? 'on' : ''}" data-act="doc" data-i="${i}">№${x.no}<small>${U.esc(x.title)}</small></button>`).join('');
+  /* ---------- Документы, резюме и газета в одном окне ---------- */
+  const isCv = d => d.kind === 'resume';
+  const tabDocs = () => G.inbox.filter(d => (docTab === 'cv') === isCv(d));
+  function pickTab() {
+    if (G.inbox.some(d => !isCv(d))) return 'docs';
+    if (G.inbox.some(isCv)) return 'cv';
+    return 'docs';
+  }
+  function docTabs() {
+    const nd = G.inbox.filter(d => !isCv(d)).length, nc = G.inbox.filter(isCv).length;
+    const unread = Math.max(0, G.news.length - (G.newsSeen || 0));
+    const vac = Hire.vacancies().length;
+    return `<div class="dtabs">
+      <button class="dtab ${docTab === 'docs' ? 'on' : ''}" data-act="dtab" data-t="docs">Документы${nd ? `<i>${nd}</i>` : ''}</button>
+      <button class="dtab ${docTab === 'cv' ? 'on' : ''}" data-act="dtab" data-t="cv">Резюме${nc ? `<i>${nc}</i>` : ''}${vac ? `<small>вакансий: ${vac}</small>` : ''}</button>
+      <button class="dtab ${docTab === 'news' ? 'on' : ''}" data-act="dtab" data-t="news">Новости${unread ? `<i class="hot">${unread}</i>` : ''}</button>
+    </div>`;
+  }
+  function headlineStrip() {
+    const n = G.news[0];
+    if (!n) return '';
+    const fresh = G.news.length > (G.newsSeen || 0);
+    return `<button class="np-strip ${fresh ? 'fresh' : ''} tone-${n.tone || 'neutral'}" data-act="dtab" data-t="news"><b>${fresh ? 'Свежий выпуск' : 'Газета'}</b><span>${U.esc(n.head)}</span><em>читать →</em></button>`;
+  }
+  function vacancyNote() {
+    const v = Hire.vacancies();
+    if (!v.length) return '<p class="cv-note">Свободных столов нет. Новые резюме можно только отклонить или отложить.</p>';
+    return `<p class="cv-note"><b>Свободных столов: ${v.length}</b> — ${v.map(e => U.esc(e.role.toLowerCase())).join(', ')}. «Согласовано» на резюме — значит нанять. Читайте внимательно: лентяи и шпионы ГусьКорп тоже рассылают резюме.</p>`;
+  }
+  function paperHtml(d) {
     const rows = (d.rows || []).map(([k, v]) => `<tr><td>${U.esc(k)}</td><td>${U.esc(v)}</td></tr>`).join('');
+    if (isCv(d)) {
+      const c = d.cand;
+      return `<div class="paper k-resume" id="paper">
+        <div class="lh lh-cv">РЕЗЮМЕ · вх. № ${d.no}<span>${U.time(d.arrived)}</span></div>
+        <div class="cv-top"><img class="cv-photo" src="${portrait(c.look, 'normal')}" alt=""><div>
+          <h3>${U.esc(c.name)} ${U.esc(c.surname)}</h3>
+          <div class="from">${U.esc(d.from)}</div>
+          <p class="cv-letter">«${U.esc(d.body)}»</p>
+        </div></div>
+        <table class="rows">${rows}</table>
+        <div class="sign">Подпись: <i>${U.esc(d.sign || '')}</i></div>
+      </div>`;
+    }
     const lh = d.kind === 'letter'
       ? `<div class="lh lh-ext">ВХОДЯЩЕЕ · вх. № ${d.no} от ${U.time(d.arrived)}</div>`
       : d.kind === 'note'
         ? `<div class="lh lh-note">записка · вх. № ${d.no}</div>`
         : `<div class="lh"><img src="${duckURL}" alt="">КРЯ ИНДАСТРИЗ<span>вх. № ${d.no} · ${U.time(d.arrived)}</span></div>`;
+    return `<div class="paper k-${d.kind || 'memo'}" id="paper">
+      ${d.old ? '<div class="old-tag">со вчера</div>' : ''}
+      ${lh}
+      <h3>${U.esc(d.title)}</h3>
+      <div class="from">От: ${U.esc(d.from)}</div>
+      <p>${U.esc(d.body)}</p>
+      <table class="rows">${rows}</table>
+      <div class="sign">Подпись: <i>${U.esc(d.sign || '')}</i></div>
+    </div>`;
+  }
+  function renderDocs() {
+    const vac = Hire.vacancies().length;
+    let html = head('Рабочий стол', `${G.inbox.length} в лотке${vac ? ` · вакансий: ${vac}` : ''}`) + docTabs();
+    if (docTab === 'news') {
+      return html + `<div class="p-body news-body">${News.render(G.news, newsMark)}</div>`;
+    }
+    const list = tabDocs();
+    const cv = docTab === 'cv';
+    if (!list.length) {
+      return html + `<div class="p-body">${cv ? vacancyNote() : headlineStrip()}<div class="docs-empty"><img src="${duckURL}" class="duck-big" alt="">
+        <p>${cv ? 'Резюме пока нет.' : 'Лоток пуст. Можно выдохнуть… пока.'}</p>
+        <p class="muted">${cv ? (vac ? 'Отдел кадров ищет кандидатов — резюме придут в течение дня.' : 'Резюме приходят, когда в офисе освобождается стол.') : 'Новые документы приходят в течение дня — вы услышите шелест бумаги.'}</p></div></div>`;
+    }
+    if (docSel >= list.length) docSel = 0;
+    const d = list[docSel];
+    const tabs = list.map((x, i) => `<button class="doc-tab ${i === docSel ? 'on' : ''} ${x.old ? 'old' : ''}" data-act="doc" data-i="${i}">№${x.no}<small>${U.esc(cv ? x.cand.name + ' ' + x.cand.surname : x.title)}</small></button>`).join('');
     html += `<div class="p-body docs">
+      ${cv ? vacancyNote() : headlineStrip()}
       <div class="doc-tabs">${tabs}</div>
       <div class="doc-area">
-        <div class="paper k-${d.kind || 'memo'}" id="paper">
-          ${lh}
-          <h3>${U.esc(d.title)}</h3>
-          <div class="from">От: ${U.esc(d.from)}</div>
-          <p>${U.esc(d.body)}</p>
-          <table class="rows">${rows}</table>
-          <div class="sign">Подпись: <i>${U.esc(d.sign || '')}</i></div>
-        </div>
+        ${paperHtml(d)}
         <div class="stamps">
-          <button class="stamp-tool ok ${held === 'approve' ? 'held' : ''}" data-act="stamp" data-s="approve"><i class="st-handle"></i><i class="st-base"></i><span>СОГЛАСОВАНО</span><kbd>A</kbd></button>
+          <button class="stamp-tool ok ${held === 'approve' ? 'held' : ''}" data-act="stamp" data-s="approve"><i class="st-handle"></i><i class="st-base"></i><span>${cv ? 'НАНЯТЬ' : 'СОГЛАСОВАНО'}</span><kbd>A</kbd></button>
           <button class="stamp-tool no ${held === 'reject' ? 'held' : ''}" data-act="stamp" data-s="reject"><i class="st-handle"></i><i class="st-base"></i><span>ОТКАЗАНО</span><kbd>D</kbd></button>
-          <p class="hint">Возьмите штамп и поставьте его на документ. Читайте внимательно: мошенники ГусьКорп не дремлют.</p>
+          <p class="hint">${cv ? 'Штамп «согласовано» на резюме — кандидат выходит на работу за свободный стол.' : 'Возьмите штамп и поставьте его на документ. Нужна подсказка — загляните во вкладку «Новости».'}</p>
         </div>
       </div>
     </div>`;
     return html;
+  }
+
+  function setDocTab(t) {
+    if (stamping) return;
+    if (t === 'news' && docTab !== 'news') newsMark = G.newsSeen || 0;
+    docTab = t; docSel = 0;
+    dropStamp();
+    Sfx.play('paper');
+    render(true);
   }
 
   function pickStamp(s) {
@@ -207,15 +276,15 @@ const UI = (() => {
 
   function stampAt(kind, cx, cy) {
     const paper = $('paper');
-    const d = G.inbox[docSel];
-    if (!paper || !d || stamping) return;
+    const d = tabDocs()[docSel];
+    if (!paper || !d || stamping || docTab === 'news') return;
     stamping = true;
     const r = paper.getBoundingClientRect();
     const x = cx == null ? r.width * U.rand(0.3, 0.7) : cx - r.left;
     const y = cy == null ? r.height * U.rand(0.45, 0.75) : cy - r.top;
     const im = document.createElement('div');
     im.className = 'imprint ' + (kind === 'approve' ? 'ok' : 'no');
-    im.textContent = kind === 'approve' ? 'СОГЛАСОВАНО' : 'ОТКАЗАНО';
+    im.textContent = kind === 'approve' ? (isCv(d) ? 'ПРИНЯТ' : 'СОГЛАСОВАНО') : 'ОТКАЗАНО';
     im.style.left = x + 'px'; im.style.top = y + 'px';
     im.style.setProperty('--rot', U.rand(-14, 10).toFixed(1) + 'deg');
     paper.appendChild(im);
@@ -239,8 +308,8 @@ const UI = (() => {
     for (const ev of G.sched) if (ev.type === 'deliver') pending += ev.kg;
     const maxByRubber = (G.rubber + pending) / CFG.KG_PER_DUCK;
     const more = Math.min(pace * left, maxByRubber);
-    const payroll = G.emps.reduce((s, e) => s + (e.fled ? 0 : e.salaryPaid), 0);
-    const profit = G.cash - CFG.START_CASH + Market.value() + more * G.price - payroll - CFG.OVERHEAD;
+    const payroll = Sim.payrollNow();
+    const profit = G.cash + Market.value() - G.dayStart + more * G.price - payroll - CFG.OVERHEAD;
     return { pace: pace * 60, ducks: G.ducks + more, payroll, profit, rubberMin: pace > 0 ? G.rubber / (pace * CFG.KG_PER_DUCK) : Infinity };
   }
 
@@ -250,8 +319,8 @@ const UI = (() => {
     html += `<div class="tabs">
       <button class="tab ${tab === 'balance' ? 'on' : ''}" data-act="ttab" data-t="balance">Баланс</button>
       <button class="tab ${tab === 'market' ? 'on' : ''}" data-act="ttab" data-t="market">Биржа</button>
-      <button class="tab ${tab === 'news' ? 'on' : ''}" data-act="ttab" data-t="news">Новости${G.news.length ? ` (${G.news.length})` : ''}</button>
-    </div><div class="p-body crt">`;
+      <button class="tab ${tab === 'news' ? 'on' : ''}" data-act="ttab" data-t="news">Новости${G.news.length > (G.newsSeen || 0) ? ` (${G.news.length - (G.newsSeen || 0)} новых)` : ''}</button>
+    </div><div class="p-body ${tab === 'news' ? 'news-body' : 'crt'}">`;
     const L = G.ledger;
     if (tab === 'balance') {
       const f = forecast();
@@ -272,9 +341,9 @@ const UI = (() => {
         ${line('Прогноз прибыли дня ≈', U.money(f.profit, true), f.profit >= 0 ? 'up big' : 'down big')}
       </div><div>
         <h4>&gt; ПРОИЗВОДСТВО</h4>
-        ${line('Уток выпущено', `${Math.floor(G.ducks)} / ${CFG.PLAN}`)}
+        ${line('Уток выпущено', `${Math.floor(G.ducks)} / ${U.num(G.plan)}`)}
         ${line('Темп', `${Math.round(f.pace)} уток/час`)}
-        ${line('Прогноз к 18:00', `≈ ${Math.round(f.ducks)}`, f.ducks >= CFG.PLAN ? 'up' : 'down')}
+        ${line('Прогноз к 18:00', `≈ ${Math.round(f.ducks)}`, f.ducks >= G.plan ? 'up' : 'down')}
         ${line('Цена утки', '$' + G.price.toFixed(2))}
         ${line('Резина на складе', `${Math.round(G.rubber)} кг`, G.rubber < 100 ? 'down' : '')}
         ${line('Хватит примерно на', isFinite(f.rubberMin) ? `${Math.round(f.rubberMin)} мин` : '—', f.rubberMin < 40 ? 'down' : '')}
@@ -308,9 +377,8 @@ const UI = (() => {
       const hov = Object.values(G.market.t).map(k => `<li><b>${k.id}</b> — ${U.esc(k.desc)}</li>`).join('');
       html += `<ul class="crt-desc">${hov}</ul>`;
     } else {
-      html += G.news.length
-        ? `<ul class="news">${G.news.map(n => `<li class="${n.big ? 'big' : ''}"><b>${U.time(n.t)}</b> ${U.esc(n.text)}</li>`).join('')}</ul>`
-        : '<p>Новостей пока нет.</p>';
+      html += News.render(G.news, newsMark);
+      G.newsSeen = G.news.length;
     }
     return html + '</div>';
   }
@@ -352,7 +420,7 @@ const UI = (() => {
 
   /* ---------- Сотрудники ---------- */
   const STATUS = e => {
-    if (e.gone) return { fired: 'уволен(а)', home: 'ушёл(ла) домой', quit: 'уволился(ась)', fled: 'сбежал(а) в ГусьКорп' }[e.gone];
+    if (e.gone) return { fired: 'уволен(а)', home: 'дома до завтра', quit: 'уволился(ась)', fled: 'сбежал(а) в ГусьКорп' }[e.gone];
     if (e.exiting) return 'уходит…';
     if (e.state === 'visit') return 'у вас в кабинете';
     if (e.state === 'walk') return e.purpose === 'office' ? 'идёт к вам' : 'идёт на место';
@@ -363,12 +431,23 @@ const UI = (() => {
   const sanBar = s => `<div class="sbar"><i style="width:${Math.round(s)}%" class="${s > 70 ? 'g' : s > 40 ? 'y' : s > 15 ? 'o' : 'r'}"></i></div>`;
   const suspTxt = e => (e.evidence ? 'ДОКАЗАНО' : e.suspicion >= 60 ? 'серьёзные' : e.suspicion >= 25 ? 'есть сомнения' : 'нет');
 
+  const seniority = e => (e.hiredDay === G.day ? (e.hiredDay === 1 ? 'с первого дня' : 'новичок, первый день') : `в компании ${G.day - (e.hiredDay || 1) + 1} дн.`);
   function renderStaff() {
-    let html = head('Сотрудники', 'нажмите на карточку, чтобы открыть досье');
+    let html = head('Сотрудники', `день ${G.day} · нажмите на карточку, чтобы открыть досье`);
     html += '<div class="p-body staff">';
     for (const e of G.emps) {
       const st = Sim.stage(e);
-      html += `<div class="card ${e.gone ? 'gone' : ''} st${st}" data-act="dossier" data-id="${e.id}">
+      if (e.gone && e.gone !== 'home') {
+        const n = G.inbox.filter(d => d.kind === 'resume').length;
+        html += `<div class="card vacancy" data-act="cvtab">
+          <div class="vac-seat">?</div>
+          <b>Вакансия</b><small>${U.esc(e.role)}</small>
+          <span class="lbl">раньше: ${U.esc(e.name)} ${U.esc(e.surname[0])}. — ${STATUS(e)}</span>
+          <span class="out">${n ? `резюме в лотке: ${n}` : 'ждём резюме'}</span>
+        </div>`;
+        continue;
+      }
+      html += `<div class="card ${e.gone ? 'gone' : ''} ${e.newbie || e.hiredDay === G.day && G.day > 1 ? 'newbie' : ''} st${st}" data-act="dossier" data-id="${e.uid}">
         <img src="${portrait(e.look, empMood(e))}" alt="">
         <b>${U.esc(e.name)} ${U.esc(e.surname[0])}.</b><small>${U.esc(e.role)}</small>
         ${e.gone ? '' : sanBar(e.sanity)}
@@ -386,14 +465,14 @@ const UI = (() => {
     const st = Sim.stage(e);
     const others = G.emps.filter(o => o !== e && !o.gone);
     const avg = others.length ? others.reduce((s, o) => s + o.produced, 0) / others.length : 0;
-    let html = head('Досье сотрудника', `№ ${100 + e.id}`);
+    let html = head('Досье сотрудника', `таб. № ${100 + e.uid}`);
     html += `<div class="p-body dossier">
       <div class="d-top">
         <img src="${portrait(e.look, empMood(e))}" alt="">
         <div>
           <h3>${U.esc(e.name)} ${U.esc(e.surname)}</h3>
           <p>${U.esc(e.role)} · ${e.female ? e.pers.f : e.pers.name}</p>
-          <p>Зарплата: $${e.salary}/день${e.fined ? ' (оштрафован' + (e.female ? 'а' : '') + ')' : ''}${e.bonus ? ` · премия $${e.bonus}` : ''}</p>
+          <p>Зарплата: $${e.salary}/день${e.fined ? ' (оштрафован' + (e.female ? 'а' : '') + ')' : ''}${e.bonus ? ` · премия $${e.bonus}` : ''} · ${seniority(e)}</p>
           <p>Статус: <b>${STATUS(e)}</b></p>
         </div>
       </div>
@@ -401,11 +480,11 @@ const UI = (() => {
       <div class="d-row"><span>Выработка сегодня</span><b>${Math.round(e.produced)} уток</b><small>в среднем по офису ${Math.round(avg)}</small></div>
       <div class="d-row"><span>Подозрения</span><div class="sbar susp"><i style="width:${e.evidence ? 100 : e.suspicion}%"></i></div><b>${suspTxt(e)}</b></div>
       <h4>Наблюдения</h4>
-      ${e.clues.length ? `<ul class="clues">${e.clues.slice().reverse().map(c => `<li><b>${U.time(c.t)}</b> ${U.esc(U.fill(c.text, e))}${c.strong ? ' <em>!</em>' : ''}</li>`).join('')}</ul>` : '<p class="muted">Пока ничего подозрительного не замечено.</p>'}
+      ${e.clues.length ? `<ul class="clues">${e.clues.slice().reverse().map(c => `<li class="${c.day && c.day < G.day ? 'past' : ''}"><b>${c.day && c.day < G.day ? (c.day === G.day - 1 ? 'вчера' : `день ${c.day}`) : U.time(c.t)}</b> ${U.esc(U.fill(c.text, e))}${c.strong ? ' <em>!</em>' : ''}</li>`).join('')}</ul>` : '<p class="muted">Пока ничего подозрительного не замечено.</p>'}
       ${e.doubleAgent ? '<p class="good">Двойной агент: сливает ГусьКорп фальшивки.</p>' : ''}
       <div class="d-btns">
-        ${NPC.canCall(e) && G.visitor !== e ? `<button class="btn big" data-act="callin" data-id="${e.id}">Вызвать в кабинет</button>` : ''}
-        ${e.state === 'visit' ? `<button class="btn big" data-act="talk" data-id="${e.id}">Продолжить разговор</button>` : ''}
+        ${G.emps.includes(e) && NPC.canCall(e) && G.visitor !== e ? `<button class="btn big" data-act="callin" data-id="${e.uid}">Вызвать в кабинет</button>` : ''}
+        ${e.state === 'visit' ? `<button class="btn big" data-act="talk" data-id="${e.uid}">Продолжить разговор</button>` : ''}
         <button class="btn" data-act="staff">← Все сотрудники</button>
       </div>
     </div>`;
@@ -420,7 +499,7 @@ const UI = (() => {
     return `<li><div><b>${a.name}</b><small>${a.desc()}</small></div><span class="cost">${cost ? U.money(cost) : 'бесплатно'}</span>
       ${left > 0 ? `<span class="cd">через ${left} мин</span>` : `<button class="btn" data-act="phone" data-id="${id}" ${cost > G.cash ? 'disabled' : ''}>Сделать</button>`}</li>`;
   }
-  const empRow = (e, extra) => `<li class="emp-row" data-act="dossier" data-id="${e.id}"><img src="${portrait(e.look, empMood(e))}" alt=""><span><b>${U.esc(e.name)} ${U.esc(e.surname)}</b><small>${U.esc(e.role)}</small></span><em>${extra}</em></li>`;
+  const empRow = (e, extra) => `<li class="emp-row" data-act="dossier" data-id="${e.uid}"><img src="${portrait(e.look, empMood(e))}" alt=""><span><b>${U.esc(e.name)} ${U.esc(e.surname)}</b><small>${U.esc(e.role)}</small></span><em>${extra}</em></li>`;
   const KIT_TASKS = ['coffee', 'fridge', 'cooler', 'feed', 'sofa', 'lunch', 'pizza'];
 
   function renderRoom(id) {
@@ -431,7 +510,7 @@ const UI = (() => {
       const ak = NPC.akhmet();
       html = head('Серверная', 'журнал доступа · сисадмин Ахмет') + `<div class="p-body room">
         <p class="room-note">Допуск в серверную есть только у <b>инженеров пищалок</b> и <b>аналитиков</b>. Ахмет замечает чужих, только когда сидит на месте${ak && ak.away ? ' — <b>сейчас его нет</b>, он ушёл чинить технику' : ''}.</p>
-        ${log.length ? `<table class="srv"><tr><th>Время</th><th>Кто</th><th>Допуск</th><th>Ахмет</th></tr>${log.map(l => `<tr class="${l.ok ? '' : 'bad'}" data-act="dossier" data-id="${l.eid}"><td>${U.time(l.t)}</td><td><b>${U.esc(l.name)}</b><small>${U.esc(l.role)}</small></td><td>${l.ok ? 'есть' : 'НЕТ'}</td><td>${l.seen ? 'видел' : 'не видел'}</td></tr>`).join('')}</table>` : '<p class="muted">Сегодня в серверную ещё никто не заходил.</p>'}
+        ${log.length ? `<table class="srv"><tr><th>Время</th><th>Кто</th><th>Допуск</th><th>Ахмет</th></tr>${log.map(l => `<tr class="${l.ok ? '' : 'bad'}" data-act="dossier" data-id="${l.uid}"><td>${U.time(l.t)}</td><td><b>${U.esc(l.name)}</b><small>${U.esc(l.role)}</small></td><td>${l.ok ? 'есть' : 'НЕТ'}</td><td>${l.seen ? 'видел' : 'не видел'}</td></tr>`).join('')}</table>` : '<p class="muted">Сегодня в серверную ещё никто не заходил.</p>'}
         <p class="muted small">Кликните по строке, чтобы открыть досье. Без допуска сюда иногда заходят и честные люди — за зарядкой или от скуки.</p>
       </div>`;
     } else if (id === 'wc') {
@@ -492,26 +571,26 @@ const UI = (() => {
 
   function renderHelp() {
     return head('Как играть') + `<div class="p-body help">
-      <p>Вы — менеджер «Кря Индастриз». Переживите рабочий день с <b>9:00 до 18:00</b> и не опозорьтесь перед советом директоров.</p>
+      <p>Вы — менеджер «Кря Индастриз». Каждый рабочий день длится с <b>9:00 до 18:00</b>, вечером — совет директоров. Дни идут один за другим: всё, что вы сделали сегодня, останется с вами завтра.</p>
       <h4>Что делать</h4>
       <ul>
-        <li><b>Документы</b> падают в лоток на столе. Возьмите штамп «СОГЛАСОВАНО» или «ОТКАЗАНО» и шлёпните по бумаге. Ищите подвох: подставные фирмы, офшоры, пузыри.</li>
+        <li><b>Рабочий стол</b> (лоток документов) — три вкладки: <b>Документы</b>, <b>Резюме</b> и <b>Новости</b>. Берите штамп «СОГЛАСОВАНО» или «ОТКАЗАНО» и шлёпайте по бумаге. Сомневаетесь — переключитесь на газету, не закрывая окно.</li>
+        <li><b>Газета «Утренний Кряк»</b> — крупные заголовки с плашками: какая бумага, сколько стоит и что сулит новость (ажиотаж, тревожный знак, обвал, ждут рост). Слухи выходят заранее — успейте купить или продать.</li>
+        <li><b>Найм.</b> Когда кто-то уходит или вы его увольняете, стол пустеет, и в лоток начинают приходить резюме. «Согласовано» — человек выходит на работу. Читайте внимательно: лентяи пишут про сон и диван, а ГусьКорп подсылает «кандидатов» с гусиными рекомендациями.</li>
         <li><b>Сотрудники</b> работают за стеклом. Кликните по любому — откроется досье. Вызывайте подозрительных на ковёр: расспросите, обыщите портфель, премируйте, оштрафуйте или увольте.</li>
-        <li><b>Офис живёт сам.</b> Сотрудники ходят за кофе, болтают у кулера, кормят кота, сидят в туалете и сами приходят к вам с жалобами, идеями и просьбами. Галя приносит документы, Ахмет чинит принтер, тётя Валя убирает мусор.</li>
-        <li><b>Комнаты.</b> Кликните по комнате: в серверной — журнал доступа (кто туда ходил без допуска), в переговорной — планёрка, на кухне — кофе и кот, на складе — запас резины, в туалете видно, кто там засел.</li>
-        <li><b>Шпионы ГусьКорп</b> фотографируют чертежи и копируют дискеты. Пока шпион на месте — будут утечки.</li>
-        <li><b>Лентяи</b> спят и раскладывают «Косынку». Сравнивайте выработку в досье.</li>
-        <li><b>Безумие.</b> Полоска над головой — рассудок. Чем позже, тем быстрее люди сходят с ума и заражают соседей. Без вас к вечеру тут будет Уолл-стрит: вопли, летающие деньги, галстуки на головах. Помогают кофе, пицца, музыка, психолог, разговор по душам и отгулы.</li>
-        <li><b>Деньги.</b> Утки приносят выручку, пока есть резина. В терминале — баланс и биржа. Облигации скучные, но надёжные. Новости подсказывают, что лопнет.</li>
-        <li><b>Совет директоров</b> в 18:00 оценит производство, прибыль, решения по документам, шпионов, хаос и репутацию.</li>
+        <li><b>Офис живёт сам.</b> Сотрудники ходят за кофе, болтают у кулера, кормят кота и сами приходят к вам с жалобами, идеями и просьбами.</li>
+        <li><b>Шпионы ГусьКорп</b> фотографируют чертежи и копируют дискеты. Пока шпион на месте — будут утечки, и завтра тоже.</li>
+        <li><b>Безумие.</b> Полоска над головой — рассудок. За ночь люди отдыхают, но не до конца: если вечером офис был Уолл-стрит, утро начнётся на нервах.</li>
+        <li><b>Деньги.</b> Касса, акции, облигации и репутация переходят в следующий день. Покупки вроде массажного кресла и кофемашины остаются навсегда.</li>
+        <li><b>Совет директоров</b> в 18:00: повышение (план растёт), оставление, штраф или увольнение. Два штрафа подряд — увольнение. Игра сохраняется в начале каждого дня.</li>
       </ul>
       <h4>Управление</h4>
       <ul class="keys">
-        <li><kbd>1</kbd>–<kbd>6</kbd> — панели хотбара</li>
-        <li><kbd>A</kbd> / <kbd>D</kbd> — штамп «согласовано» / «отказано»</li>
+        <li><kbd>1</kbd>–<kbd>6</kbd> — панели хотбара, <kbd>N</kbd> — газета</li>
+        <li><kbd>A</kbd> / <kbd>D</kbd> — штамп «согласовано» / «отказано», <kbd>Q</kbd> — следующая вкладка рабочего стола</li>
         <li><kbd>Пробел</kbd> — пауза, <kbd>F</kbd> — ускорить время, <kbd>M</kbd> — звук, <kbd>Esc</kbd> — закрыть окно</li>
       </ul>
-      <p class="muted">Пока открыто окно с документами, время идёт вдвое медленнее, во время разговоров — вчетверо.</p>
+      <p class="muted">Пока открыт рабочий стол, время идёт вдвое медленнее, во время разговоров — вчетверо.</p>
     </div>`;
   }
 
@@ -538,9 +617,11 @@ const UI = (() => {
     if (a === 'close') close();
     else if (a === 'doc') { docSel = +b.dataset.i; Sfx.play('paper'); render(true); }
     else if (a === 'stamp') pickStamp(b.dataset.s);
-    else if (a === 'ttab') { curArg = b.dataset.t; Sfx.play('click'); render(true); }
+    else if (a === 'ttab') { curArg = b.dataset.t; if (curArg === 'news') newsMark = G.newsSeen || 0; Sfx.play('click'); render(true); }
+    else if (a === 'dtab') { setDocTab(b.dataset.t); }
     else if (a === 'answer') answerCall();
-    else if (a === 'dossier') { Sfx.play('click'); openPanel('dossier', G.emps[+b.dataset.id]); }
+    else if (a === 'dossier') { const e = Sim.byUid(+b.dataset.id); if (e) { Sfx.play('click'); openPanel('dossier', e); } }
+    else if (a === 'cvtab') { Sfx.play('click'); openPanel('docs', 'cv'); }
     else if (a === 'staff') { Sfx.play('click'); openPanel('staff'); }
     else if (a === 'meeting') {
       if (G.time < (G.cd.meeting || 0)) return;
@@ -549,8 +630,8 @@ const UI = (() => {
       Sim.toast(n ? `Планёрка! В переговорную идут ${n} чел. Конвейер подождёт.` : 'Все заняты — планёрку собрать не удалось.', n ? 'good' : 'warn');
       Sfx.play('open'); close();
     } else if (a === 'feedcat') { NPC.clickCat(); render(true); }
-    else if (a === 'callin') { const e = G.emps[+b.dataset.id]; if (Sim.callIn(e)) close(); }
-    else if (a === 'talk') { const e = G.emps[+b.dataset.id]; close(); openTalk(e); }
+    else if (a === 'callin') { const e = Sim.byUid(+b.dataset.id); if (e && Sim.callIn(e)) close(); }
+    else if (a === 'talk') { const e = Sim.byUid(+b.dataset.id); if (e) { close(); openTalk(e); } }
   }
 
   /* ---------- Диалоги ---------- */
@@ -685,6 +766,7 @@ const UI = (() => {
   function update(dt) {
     if (!G) return;
     if (G.phase === 'day' || G.phase === 'intro') {
+      $('c-day').textContent = `${Sim.WEEK[Sim.weekday()]} · День ${G.day}`;
       $('c-time').textContent = U.time(G.time);
       $('c-sky').src = Spr.iconURL(G.time >= U.T(17, 20) ? 'moon' : 'sun', 3);
       cashShown = U.lerp(cashShown, G.cash, Math.min(1, dt * 6));
@@ -697,7 +779,7 @@ const UI = (() => {
       $('t-chaos').textContent = ch + '%';
       $('chaos-label').textContent = ch >= 80 ? 'УОЛЛ-СТРИТ 2001' : ch >= 60 ? 'Безумие' : ch >= 40 ? 'Нервно' : ch >= 20 ? 'Рабочая суета' : 'Спокойно';
       $('chaos-label').className = ch >= 60 ? 'hot' : '';
-      $('m-ducks').style.width = Math.min(100, (G.ducks / CFG.PLAN) * 100) + '%';
+      $('m-ducks').style.width = Math.min(100, (G.ducks / G.plan) * 100) + '%';
       $('t-ducks').textContent = Math.floor(G.ducks);
       $('m-rubber').style.width = Math.min(100, (G.rubber / 600) * 100) + '%';
       $('m-rubber').className = G.rubber < 90 ? 'r' : G.rubber < 200 ? 'y' : 'b';
@@ -731,6 +813,16 @@ const UI = (() => {
     } else if (cur === 'docs') render();
   }
 
+  /* Новый день: чистим окна и уведомления */
+  function resetDay() {
+    if (cur) close();
+    if (D.open) closeDialog();
+    dropStamp();
+    $('toasts').innerHTML = '';
+    cashShown = G.cash; lastInboxLen = -1; lastNewsLen = -1; docTab = 'docs'; newsMark = 0; docSel = 0;
+    $('b-speed').innerHTML = `<img src="${Spr.iconURL('play', 3)}" alt="">`;
+  }
+
   function onKey(ev) {
     const k = ev.key.toLowerCase();
     if (ev.target && ev.target.tagName === 'INPUT') return false;
@@ -739,13 +831,15 @@ const UI = (() => {
     if (G.phase !== 'day' || D.open) return false;
     const hb = HOTBAR.find(h => h.key === k);
     if (hb) { toggle(hb.id); return true; }
-    if (cur === 'docs' && (k === 'a' || k === 'ф')) { if (G.inbox.length) stampAt('approve'); return true; }
-    if (cur === 'docs' && (k === 'd' || k === 'в')) { if (G.inbox.length) stampAt('reject'); return true; }
+    if (cur === 'docs' && (k === 'a' || k === 'ф')) { if (tabDocs().length) stampAt('approve'); return true; }
+    if (cur === 'docs' && (k === 'd' || k === 'в')) { if (tabDocs().length) stampAt('reject'); return true; }
+    if (cur === 'docs' && (k === 'tab' || k === 'q' || k === 'й')) { const order = ['docs', 'cv', 'news']; setDocTab(order[(order.indexOf(docTab) + 1) % 3]); return true; }
+    if (k === 'n' || k === 'т') { if (cur === 'docs') setDocTab(docTab === 'news' ? pickTab() : 'news'); else openPanel('docs', 'news'); return true; }
     return false;
   }
 
   return {
-    init, toast, say, tooltip, openPanel, openDossier, close, dialog, closeDialog, openTalk, answerCall, update, onKey,
+    init, toast, say, tooltip, openPanel, openDossier, close, dialog, closeDialog, openTalk, answerCall, update, onKey, resetDay,
     isOpen: () => !!cur, dialogOpen: () => D.open, portrait, duck: () => duckURL,
   };
 })();

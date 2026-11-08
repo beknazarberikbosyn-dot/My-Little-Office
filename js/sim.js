@@ -37,79 +37,135 @@ const Sim = (() => {
     log(text, type);
     UI.toast(text, type, onClick);
   }
-  function addNews(text, big) {
-    G.news.unshift({ t: G.time, text, big: !!big });
-    if (big) UI.toast('НОВОСТИ: ' + text, 'news', () => UI.openPanel('terminal', 'news'));
+  /* Новость в газету: key — шаблон из News.T (или готовый объект) */
+  function addNews(key, ctx) {
+    const n = typeof key === 'string' ? News.make(key, ctx) : key;
+    if (!n) return;
+    n.t = G.time; n.day = G.day;
+    G.news.unshift(n);
+    if (G.news.length > 40) G.news.pop();
+    if (n.big) {
+      UI.toast('«Утренний Кряк»: ' + n.head, 'news', () => UI.openPanel('docs', 'news'));
+      Sfx.play('paper');
+    }
   }
 
   /* ---------- Сотрудники ---------- */
-  function makeEmployees() {
+  function look(female) {
+    return {
+      female,
+      skin: U.pick(Data.LOOK.skin),
+      hair: U.pick(Data.LOOK.hair),
+      hairStyle: female ? U.pick(['long', 'bob', 'bun', 'long', 'bob']) : U.pick(['short', 'short', 'bald', 'spiky', 'slick']),
+      shirt: U.pick(Data.LOOK.shirt),
+      tie: female ? null : (U.chance(0.75) ? U.pick(Data.LOOK.tie) : null),
+      pants: U.pick(Data.LOOK.pants),
+      jacket: female ? null : U.pick(Data.LOOK.jacket),
+      skirt: female && U.chance(0.6) ? U.pick(['#3a3f4a', '#5a2a3a', '#2a3550', '#4b3a2e']) : null,
+      glasses: U.chance(0.25),
+    };
+  }
+  /* Имя, которого сейчас нет в офисе */
+  function freshName(female) {
+    const used = new Set(G ? G.emps.concat(G.alumni || []).map(e => e.name) : []);
+    const pool = (female ? Data.NAMES_F : Data.NAMES_M).filter(n => !used.has(n));
+    return U.pick(pool.length ? pool : (female ? Data.NAMES_F : Data.NAMES_M));
+  }
+  /* Поля, которые живут только один день */
+  function dayFields(e) {
+    Object.assign(e, {
+      state: 'seated', x: 0, y: 0, dir: 'down', path: [], purpose: null, walkT: 0,
+      produced: 0, searched: false, asked: false, soul: false, fined: false, bonus: 0, salaryPaid: e.salary,
+      sleepUntil: 0, activeClue: null, anim: Math.random() * 10, bubbleCD: U.rand(3, 12),
+      exiting: false, home: false, fired: false, quit: false, fled: false, carryBox: false,
+      visitReason: null, pendingTalk: false, task: null, carry: null, hidden: false, script: null, moving: false,
+      probed: false, whistled: false, askedWfh: false, thanked: false, fakeBlueprints: false, newbie: false, cupUntil: 0,
+    });
+    e.maxStage = stage(e);
+    return e;
+  }
+  function makeEmployee(i, o = {}) {
+    const female = Math.random() < 0.5;
+    const r = o.role || U.pick(Data.ROLES);
+    const trait = o.trait || 'normal';
+    const pers = U.pick(Data.PERSONALITIES);
+    let skill = U.randi(r.skill[0], r.skill[1]);
+    if (trait === 'star') skill = Math.round(skill * 1.3);
+    const e = {
+      uid: G ? ++G.uidSeq : i + 1, id: i, female, look: look(female), trait, pers,
+      name: freshName(female),
+      surname: U.pick(female ? Data.SURNAMES_F : Data.SURNAMES_M),
+      role: r.role, salary: r.salary, skill,
+      stress: pers.stress * (trait === 'star' ? 1.15 : 1),
+      col: i % 4, row: Math.floor(i / 4),
+      sanity: U.randi(80, 98),
+      clues: [], suspicion: 0, evidence: false, lazyFixed: false, doubleAgent: false, herring: null,
+      gone: null, days: 0, hiredDay: G ? G.day : 1,
+    };
+    return dayFields(e);
+  }
+  function makeStaff() {
     const roles = U.shuffle(Data.ROLES.slice());
-    const namesM = U.shuffle(Data.NAMES_M.slice());
-    const namesF = U.shuffle(Data.NAMES_F.slice());
     const traits = ['spy', 'lazy', 'lazy', 'star', 'normal', 'normal', 'normal', 'normal'];
     if (U.chance(0.45)) traits[7] = 'spy';
     U.shuffle(traits);
     const emps = [];
-    for (let i = 0; i < 8; i++) {
-      const female = Math.random() < 0.5;
-      const r = roles[i];
-      const trait = traits[i];
-      const pers = U.pick(Data.PERSONALITIES);
-      let skill = U.randi(r.skill[0], r.skill[1]);
-      if (trait === 'star') skill = Math.round(skill * 1.3);
-      const look = {
-        female,
-        skin: U.pick(Data.LOOK.skin),
-        hair: U.pick(Data.LOOK.hair),
-        hairStyle: female ? U.pick(['long', 'bob', 'bun', 'long', 'bob']) : U.pick(['short', 'short', 'bald', 'spiky', 'slick']),
-        shirt: U.pick(Data.LOOK.shirt),
-        tie: female ? null : (U.chance(0.75) ? U.pick(Data.LOOK.tie) : null),
-        pants: U.pick(Data.LOOK.pants),
-        jacket: female ? null : U.pick(Data.LOOK.jacket),
-        skirt: female && U.chance(0.6) ? U.pick(['#3a3f4a', '#5a2a3a', '#2a3550', '#4b3a2e']) : null,
-        glasses: U.chance(0.25),
-      };
-      emps.push({
-        id: i, female, look, trait, pers,
-        name: female ? namesF.pop() : namesM.pop(),
-        surname: U.pick(female ? Data.SURNAMES_F : Data.SURNAMES_M),
-        role: r.role, salary: r.salary, salaryPaid: r.salary, skill,
-        stress: pers.stress * (trait === 'star' ? 1.15 : 1),
-        col: i % 4, row: Math.floor(i / 4),
-        sanity: U.randi(80, 98),
-        state: 'seated', x: 0, y: 0, dir: 'down', path: [], purpose: null, walkT: 0,
-        produced: 0, clues: [], suspicion: 0, evidence: false,
-        searched: false, asked: false, soul: false, fined: false, bonus: 0,
-        lazyFixed: false, doubleAgent: false, sleepUntil: 0, activeClue: null,
-        maxStage: 0, anim: Math.random() * 10, bubbleCD: U.rand(3, 12),
-        gone: null, exiting: false, herring: null,
-      });
-    }
+    for (let i = 0; i < 8; i++) { const e = makeEmployee(i, { role: roles[i], trait: traits[i] }); G.emps.push(e); emps.push(e); }
     return emps;
   }
+  const byUid = uid => (G.emps.find(e => e.uid === uid) || G.alumni.find(e => e.uid === uid) || null);
 
-  /* ---------- Новый день ---------- */
+  /* ---------- Карьера ---------- */
+  const RANKS = ['Менеджер', 'Старший менеджер', 'Директор офиса', 'Вице-президент', 'Президент компании'];
+  const WEEK = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт'];
+  const WEEK_FULL = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница'];
+  const weekday = (d = G.day) => (d - 1) % 5;
+  const planFor = () => Math.min(4200, CFG.PLAN + 250 * G.career.rank);
+
   function newGame() {
     G = {
-      phase: 'title', time: CFG.DAY_START, acc: 0, speed: 1, paused: false,
-      cash: CFG.START_CASH, ledger: {}, price: CFG.DUCK_PRICE,
-      rubber: CFG.START_RUBBER, rubberOutMin: 0, producing: true,
-      ducks: 0, rep: 50, chaos: 0, chaosSum: 0, chaosN: 0, chaosMax: 0, highChaosMin: 0, chaosCD: 0,
-      emps: makeEmployees(), visitor: null,
-      inbox: [], docLog: [], docStats: { correct: 0, wrong: 0, neutral: 0 }, docSeq: 410,
-      sched: [], call: null, news: [], log: [], cd: {},
-      musicUntil: 0, overtime: false, breakdownUntil: 0,
-      mods: { decay: 1, coffee: false, motivation: 1 }, contracts: {}, flags: {}, docsTransit: 0,
-      leaks: 0, spiesCaught: 0, innocentFired: 0, firedCount: 0, sentHome: 0, bonuses: 0,
-      chaosEvents: 0, speakerUses: 0, dialog: false, panel: null,
+      phase: 'title', day: 1, uidSeq: 0, emps: [], alumni: [],
+      cash: CFG.START_CASH, rep: 50, rubber: CFG.START_RUBBER, priceBase: CFG.DUCK_PRICE,
+      career: { rank: 0, strikes: 0, wallet: 0, history: [] },
+      owned: {}, memory: {}, catHunger: 42, carryDocs: [], docSeq: 410, brief: null,
     };
+    makeStaff();
     Market.init();
-    buildSchedule();
+    G.market.ev = Market.plan();
+    beginDay();
+  }
+
+  /* ---------- Начало рабочего дня ---------- */
+  function beginDay() {
+    Object.assign(G, {
+      time: CFG.DAY_START, acc: 0, speed: 1, paused: false, ledger: {}, price: G.priceBase,
+      rubberOutMin: 0, producing: true, ducks: 0,
+      chaos: 0, chaosSum: 0, chaosN: 0, chaosMax: 0, highChaosMin: 0, chaosCD: 0,
+      visitor: null, inbox: [], docLog: [], docStats: { correct: 0, wrong: 0, neutral: 0 },
+      sched: [], call: null, news: [], newsSeen: 0, log: [], cd: {},
+      musicUntil: 0, overtime: false, breakdownUntil: 0,
+      mods: { decay: G.owned.massage ? 0.85 : 1, coffee: !!G.owned.coffee, motivation: 1 }, contracts: {}, flags: {}, docsTransit: 0,
+      leaks: 0, spiesCaught: 0, innocentFired: 0, firedCount: 0, sentHome: 0, bonuses: 0, hired: 0,
+      chaosEvents: 0, speakerUses: 0, dialog: false, dialogKind: null, panel: null,
+      plan: planFor(),
+    });
+    G.dayStartHoldings = Market.stocksValue();
+    G.dayStart = G.cash + G.dayStartHoldings;
+    /* вчерашние документы, до которых не дошли руки */
+    for (const key of G.carryDocs || []) {
+      const d = Content.makeDoc(key);
+      if (!d) continue;
+      d.old = true; d.no = ++G.docSeq; d.arrived = G.time;
+      G.inbox.push(d);
+    }
+    G.carryDocs = [];
     NPC.init();
+    buildSchedule();
+    updateChaos();
   }
 
   function queue(ev) {
+    if (ev.eid != null && ev.uid == null && G.emps[ev.eid]) ev.uid = G.emps[ev.eid].uid;
     let i = G.sched.length;
     while (i > 0 && G.sched[i - 1].t > ev.t) i--;
     G.sched.splice(i, 0, ev);
@@ -120,67 +176,84 @@ const Sim = (() => {
     return Array.from({ length: n }, (_, i) => Math.round(from + span * i + U.rand(span * 0.15, span * 0.85)));
   }
 
+  /* Улики, утечки и походы в серверную для шпионов и лентяев (с момента from) */
+  function scheduleTraitEvents(e, from) {
+    const add = (t, type, data) => { if (t < CFG.DAY_END - 10) queue(Object.assign({ t: Math.max(CFG.DAY_START + 2, t), type, eid: e.id, uid: e.uid }, data || {})); };
+    from = Math.max(from, U.T(9, 30));
+    const span = U.T(16, 40) - from;
+    if (span < 30) return;
+    if (e.trait === 'spy' && !e.doubleAgent) {
+      const strong = U.shuffle(Data.CLUES.spy.filter(c => c.strong));
+      const weak = U.shuffle(Data.CLUES.spy.filter(c => !c.strong));
+      const seq = [weak[0], strong[0], U.chance(0.5) ? strong[1] : weak[1]];
+      const n = Math.max(1, Math.round(3 * span / 420));
+      spread(n, from, U.T(16, 30)).forEach((t, i) => add(t, 'clue', { clue: seq[i % 3] }));
+      [[11, 10], [13, 40], [16, 5]].forEach(([h, m]) => {
+        const t = U.T(h, m) + U.randi(-15, 15);
+        if (t > from + 20 && U.chance(0.85)) add(t, 'leak');
+      });
+      spread(2, Math.max(from, U.T(10)), U.T(16)).forEach(t => add(t, 'errand', { task: 'server', tries: 0 }));
+    } else if (e.trait === 'lazy' && !e.lazyFixed) {
+      const seq = U.shuffle(Data.CLUES.lazy.slice()).slice(0, 3);
+      const n = Math.max(1, Math.round(3 * span / 420));
+      spread(n, from + 10, U.T(16, 40)).forEach((t, i) => add(t, 'clue', { clue: seq[i % 3] }));
+    }
+  }
+
   function buildSchedule() {
     const add = (t, type, data) => queue(Object.assign({ t: Math.max(CFG.DAY_START + 2, t), type }, data || {}));
+    const news = (t, key, ctx) => add(t, 'news', { key, ctx });
+    const mem = G.memory || {};
 
     Content.planDocs().forEach(d => add(d.t, 'doc', { key: d.key }));
+    Content.planCalls().forEach(c => add(c.t, 'call', { key: c.key }));
 
-    add(U.T(10, U.randi(35, 55)), 'call', { key: 'goose' });
-    add(U.T(12, U.randi(15, 35)), 'call', { key: 'mom' });
-    add(U.T(13, U.randi(30, 50)), 'call', { key: 'foreman' });
-    add(U.T(14, U.randi(40, 55)), 'call', { key: 'press' });
-    add(U.T(15, U.randi(10, 25)), 'call', { key: 'broker' });
-    add(U.T(16, U.randi(30, 45)), 'call', { key: 'founder' });
-
-    for (const e of G.emps) {
-      if (e.trait === 'spy') {
-        const strong = U.shuffle(Data.CLUES.spy.filter(c => c.strong));
-        const weak = U.shuffle(Data.CLUES.spy.filter(c => !c.strong));
-        const seq = [weak[0], strong[0], U.chance(0.5) ? strong[1] : weak[1]];
-        spread(3, U.T(9, 35), U.T(16, 30)).forEach((t, i) => add(t, 'clue', { eid: e.id, clue: seq[i] }));
-        [[11, 10], [13, 40], [16, 5]].forEach(([h, m]) => {
-          if (U.chance(0.85)) add(U.T(h, m) + U.randi(-15, 15), 'leak', { eid: e.id });
-        });
-      } else if (e.trait === 'lazy') {
-        const seq = U.shuffle(Data.CLUES.lazy.slice()).slice(0, 3);
-        spread(3, U.T(9, 45), U.T(16, 40)).forEach((t, i) => add(t, 'clue', { eid: e.id, clue: seq[i] }));
-      }
-    }
+    for (const e of G.emps) if (!e.gone) scheduleTraitEvents(e, CFG.DAY_START);
     const herr = U.shuffle(Data.CLUES.herring.slice());
-    U.shuffle(G.emps.filter(e => e.trait === 'normal' || e.trait === 'star')).slice(0, 2)
+    U.shuffle(G.emps.filter(e => !e.gone && (e.trait === 'normal' || e.trait === 'star'))).slice(0, 2)
       .forEach((e, i) => add(U.randi(U.T(10, 0), U.T(16, 0)), 'clue', { eid: e.id, clue: herr[i] }));
 
-    Data.NEWS_START.forEach(text => add(CFG.DAY_START + 1, 'news', { text }));
-    const ut = G.market.t.UTKA, en = G.market.t.ENGN;
-    if (ut.crash) {
-      add(ut.crash.start - 100, 'news', { text: Data.NEWS_UTKA_WARN[0] });
-      add(ut.crash.start - 45, 'news', { text: Data.NEWS_UTKA_WARN[1] });
-      add(ut.crash.start + 4, 'news', { text: 'ПУЗЫРЬ ЛОПНУЛ! Акции Утка.ком рухнули. Инвесторы кидаются клавиатурами.', big: true });
-    } else {
-      add(U.T(14, 10), 'news', { text: 'Утка.ком снова растёт. Скептики посрамлены. Пока что.' });
+    /* утренний выпуск газеты */
+    const m = CFG.DAY_START + 1;
+    const n0 = G.sched.length;
+    if (G.day === 1) ['utka_hype', 'engn_aaa', 'goos_promise'].forEach(k => news(m, k));
+    else {
+      const y = mem.report || {};
+      if (y.ducks != null) news(m, 'recap', { ducks: y.ducks, plan: y.plan, ok: y.ducks >= y.plan });
+      if (mem.verdict === 'promo') news(m, 'verdict_promo', { rank: RANKS[G.career.rank] });
+      if (mem.verdict === 'fine') news(m, 'verdict_fine');
+      if (mem.utkaCrashed) news(m, 'utka_aftermath');
+      else if (G.market.t.UTKA.state === 'burst') news(m, 'utka_bottom');
+      if (mem.engnCrashed) news(m, 'engn_bankrupt');
+      if (mem.leaks) news(m, 'leaks_recap', { n: mem.leaks });
+      if (mem.raid) news(m, 'raid_followup');
+      if (mem.exposedGoose) news(m, 'goose_suit');
+      if (mem.bribeRumor) news(m, 'bribe_rumor');
+      if (mem.innocent) news(m, 'innocent', { name: mem.innocent });
+      if (mem.recruited) news(m, 'goose_recruit');
+      const vac = Hire.vacancies().length;
+      if (vac) news(m, 'hiring', { n: vac });
+      if (G.sched.length - n0 < 3) news(m, 'filler');
     }
-    if (en.crash) {
-      add(en.crash.start - 90, 'news', { text: Data.NEWS_ENGN_WARN[0] });
-      add(en.crash.start - 40, 'news', { text: Data.NEWS_ENGN_WARN[1] });
-      add(en.crash.start + 3, 'news', { text: 'СКАНДАЛ: Энергон годами рисовал прибыль. Акции обвалились, аудиторы ищут шредер побольше.', big: true });
-    } else {
-      add(U.T(13, 30), 'news', { text: 'Энергон отчитался о рекордной прибыли. Как именно — никто не понял.' });
+    /* сценарий биржи: слухи заранее, развязка в момент события */
+    for (const ev of G.market.ev) {
+      if (ev.kind === 'calm') { news(ev.start, ev.hit); continue; }
+      (ev.warn || []).forEach((k, i, arr) => news(ev.start - (arr.length === 1 ? U.randi(60, 90) : (i === 0 ? 100 : 45)), k));
+      news(ev.start + (ev.kind === 'crash' ? 4 : 6), ev.hit);
     }
-    add(U.T(12, 0), 'news', { text: 'Облигации казначейства: доходность стабильна. Скучно, как всегда.' });
+    news(U.T(12, 0), 'bonds');
+    if (G.day > 1) news(U.T(U.randi(10, 15), U.randi(0, 50)), 'filler');
+    Hire.morning();
     /* сотрудники сами приходят к менеджеру */
     spread(7, U.T(9, 40), U.T(17, 10)).forEach(t => add(t, 'selfvisit'));
-    /* шпионы наведываются в серверную */
-    for (const e of G.emps) {
-      if (e.trait !== 'spy') continue;
-      spread(2, U.T(10, 0), U.T(16, 0)).forEach(t => add(t, 'errand', { eid: e.id, task: 'server', tries: 0 }));
-    }
     add(U.T(17, 30), 'fn', { fn: () => toast('До совета директоров 30 минут. Разберите документы и успокойте офис!', 'warn') });
     add(U.T(17, 50), 'fn', { fn: () => { toast('10 минут до совета директоров!', 'warn'); Sfx.play('alarm'); } });
   }
 
   /* ---------- События расписания ---------- */
   function fireEvent(ev) {
-    const e = ev.eid != null ? G.emps[ev.eid] : null;
+    let e = ev.eid != null ? G.emps[ev.eid] : null;
+    if (e && ev.uid != null && e.uid !== ev.uid) e = null;
     switch (ev.type) {
       case 'doc': {
         const d = Content.makeDoc(ev.key);
@@ -196,7 +269,12 @@ const Sim = (() => {
       }
       case 'clue': showClue(e, ev); break;
       case 'leak': leak(e); break;
-      case 'news': addNews(ev.text, ev.big); break;
+      case 'news': addNews(ev.key, ev.ctx); break;
+      case 'resume': {
+        if (!Hire.vacancies().length) break;
+        NPC.deliverDoc(Hire.resumeDoc(Hire.candidate(ev.role, ev.trait)));
+        break;
+      }
       case 'deliver':
         G.rubber += ev.kg;
         G.flags.rubberOut = false; G.flags.rubberLow = false;
@@ -205,8 +283,8 @@ const Sim = (() => {
         Sfx.play('coin');
         break;
       case 'breakdown':
-        G.breakdownUntil = G.time + 50;
-        toast('Конвейер сломался! Михалыч чинит его 50 минут. Производство стоит.', 'bad');
+        G.breakdownUntil = G.time + (G.flags.insured ? 15 : 50);
+        toast(G.flags.insured ? 'Конвейер сломался, но страховщики уже здесь: ремонт 15 минут.' : 'Конвейер сломался! Михалыч чинит его 50 минут. Производство стоит.', 'bad');
         Sfx.play('alarm'); World.shake(0.6);
         break;
       case 'quit': quit(e); break;
@@ -338,19 +416,19 @@ const Sim = (() => {
       Market.jump('GOOS', -8);
       e.clues.push({ t: G.time, text: U.fill('слил{|а} ГусьКорп ваши фальшивые чертежи — попал{ся|ась}!', e), strong: true });
       toast(U.fill('ГусьКорп выпустила пищалку по фальшивым чертежам, которые вы дали {name}. Шпион раскрыт!', e), 'good', () => UI.openDossier(e));
-      addNews('ГусьКорп выпустила пищалку, которая играет гимн «Кря Индастриз». Конфуз!');
+      addNews('fake_blueprint');
       return;
     }
     if (e.doubleAgent) {
       Market.jump('GOOS', -12); G.rep += 4;
       toast(U.fill('Двойной агент {name} слил{|а} ГусьКорп фальшивые чертежи! Их акции падают.', e), 'good');
-      addNews('ГусьКорп выпустила пищалку, которая мычит. Акции компании падают.');
+      addNews('double_agent');
       return;
     }
     G.leaks++; G.rep -= 6;
     Market.jump('QUAK', -5); Market.jump('GOOS', 7);
     toast(LEAKS[(G.leaks - 1) % LEAKS.length] + ' Кто-то в офисе работает на конкурента…', 'bad');
-    addNews('ГусьКорп снова опередила «Кря Индастриз». Совпадение? Аналитики сомневаются.');
+    addNews('leak');
     Sfx.play('alarm');
   }
 
@@ -375,7 +453,7 @@ const Sim = (() => {
       G.flags.raid = true;
       money(-3000, 'chaos'); G.rep -= 12;
       toast('ОБЛАВА! Комиссия по ценным бумагам нагрянула в офис, где творится Уолл-стрит. Штраф $3 000, репутация −12.', 'bad');
-      addNews('Комиссия по ценным бумагам провела обыск в «Кря Индастриз». Свидетели говорят о горнах и летающих деньгах.', false);
+      addNews('raid');
       Sfx.play('alarm'); World.shake(1.2);
       present().forEach(e => heal(e, 12));
       return;
@@ -484,7 +562,7 @@ const Sim = (() => {
 
     if (t >= U.T(10)) {
       const elapsed = t - CFG.DAY_START;
-      const pace = G.ducks / (CFG.PLAN * elapsed / (CFG.DAY_END - CFG.DAY_START));
+      const pace = G.ducks / (G.plan * elapsed / (CFG.DAY_END - CFG.DAY_START));
       G.market.t.QUAK.drift = U.clamp((pace - 1) * 0.0006 + (G.rep - 50) * 0.00002 - G.chaos * 0.000004, -0.0008, 0.0008);
     }
     Market.tick(t);
@@ -578,13 +656,14 @@ const Sim = (() => {
   function fire(e) {
     e.fired = true;
     G.firedCount++;
+    Hire.opened(e);
     e.salaryPaid = Math.round(e.salary * 0.5);
     if (e.trait === 'spy') {
       if (!e.doubleAgent) G.spiesCaught++;
       G.rep += 8;
       Market.jump('GOOS', -5); Market.jump('QUAK', 3);
       toast(U.fill('Шпион ГусьКорп разоблачён! {name} покидает здание с коробкой.', e), 'good');
-      addNews('«Кря Индастриз» поймала промышленного шпиона. ГусьКорп всё отрицает и нервно крякает.');
+      addNews('spy_caught');
       Sfx.play('good');
       return 'Вы ещё пожалеете! Гусев обещал мне кабинет с видом на пруд… *уходит с коробкой*';
     }
@@ -594,6 +673,7 @@ const Sim = (() => {
       return 'Ну и ладно. Пойду спать домой — там подушка удобнее.';
     }
     G.innocentFired++;
+    G.flags.innocent = `${e.name} ${e.surname}`;
     G.rep -= e.trait === 'star' ? 7 : 4;
     present().forEach(o => { if (o !== e) hurt(o, 8); });
     toast(U.fill('Вы уволили {name}. Офис в шоке: за что?', e), 'bad');
@@ -615,6 +695,7 @@ const Sim = (() => {
       return 'Ладно… Я буду передавать им то, что вы скажете. Только не увольняйте!';
     }
     e.fled = true; G.leaks++; G.rep -= 6;
+    Hire.opened(e);
     Market.jump('GOOS', 6); Market.jump('QUAK', -3);
     toast(U.fill('{name} сбежал{|а} к ГусьКорп прямо с чертежами!', e), 'bad');
     Sfx.play('alarm');
@@ -626,6 +707,7 @@ const Sim = (() => {
     if (G.visitor === e || e.state === 'visit') { queue({ t: G.time + 10, type: 'quit', eid: e.id }); return; }
     e.quit = true; e.exiting = true; e.carryBox = true;
     NPC.leave(e);
+    Hire.opened(e);
     G.rep -= 2; Market.jump('GOOS', 2);
     e.salaryPaid = Math.round(e.salary * 0.7);
     toast(U.fill('{name} собрал{|а} вещи и уш{ёл|ла} в ГусьКорп.', e), 'bad');
@@ -658,11 +740,17 @@ const Sim = (() => {
     e.purpose = null;
   }
 
+  /* Зарплаты к выплате: все за столами плюс те, кто ушёл сегодня */
+  function payrollNow() {
+    const left = G.alumni.filter(a => a.leftDay === G.day && !G.emps.includes(a));
+    return G.emps.concat(left).reduce((s, e) => s + (e.fled || e.vacant ? 0 : e.salaryPaid), 0);
+  }
+
   /* ---------- Конец дня ---------- */
   function endDay() {
     G.phase = 'ending';
     const L = G.ledger;
-    const payroll = G.emps.reduce((s, e) => s + (e.fled ? 0 : e.salaryPaid), 0);
+    const payroll = payrollNow();
     money(-payroll, 'payroll');
     money(-CFG.OVERHEAD, 'overhead');
     const notes = [];
@@ -686,13 +774,14 @@ const Sim = (() => {
     if (G.contracts.fake) { money(-4000, 'contracts'); G.rep -= 4; notes.push('Goose & Partners выставила неустойку $4 000 за «сорванный» заказ.'); }
     G.rep = U.clamp(G.rep, 0, 100);
     const holdings = Market.stocksValue();
-    const profit = G.cash - CFG.START_CASH + holdings;
-    const investPnL = (L.invest || 0) + holdings;
-    const spies = G.emps.filter(e => e.trait === 'spy').length;
+    const profit = G.cash + holdings - G.dayStart;
+    const investPnL = (L.invest || 0) + holdings - G.dayStartHoldings;
+    const todays = G.emps.concat(G.alumni.filter(a => a.leftDay === G.day && !G.emps.includes(a)));
+    const spies = todays.filter(e => e.trait === 'spy').length;
     const decided = G.docStats.correct + G.docStats.wrong;
     const ignored = G.inbox.filter(d => (typeof d.correct === 'function' ? d.correct() : d.correct) != null).length;
     const report = {
-      ducks: Math.floor(G.ducks), plan: CFG.PLAN,
+      day: G.day, ducks: Math.floor(G.ducks), plan: G.plan, hired: G.hired,
       revenue: L.sales || 0, payroll, overhead: CFG.OVERHEAD,
       materials: -(L.materials || 0),
       other: -((L.office || 0) + (L.staff || 0) + (L.chaos || 0) + (L.charity || 0)),
@@ -704,15 +793,148 @@ const Sim = (() => {
       rep: G.rep, raid: !!G.flags.raid, bribeTaken: !!G.flags.bribe, notes,
       rubberOutMin: G.rubberOutMin, sentHome: G.sentHome, bonuses: G.bonuses,
       boughtUTKA: !!G.flags.bought_UTKA, boughtENGN: !!G.flags.bought_ENGN,
-      utkaCrashed: !!G.market.t.UTKA.crash, engnCrashed: !!G.market.t.ENGN.crash,
+      utkaCrashed: Market.happened('UTKA', 'crash'), engnCrashed: Market.happened('ENGN', 'crash'),
       bonds: G.market.bondsDone || 0, penny: G.market.pennyDone || 0, pennyWin: G.market.pennyWin,
       bankrupt: G.cash + holdings < 0,
+      cash: G.cash, wallet: G.career.wallet,
     };
+    G.lastReport = report;
     return report;
   }
 
+  /* ---------- Переход к следующему дню ---------- */
+  /* Решение совета меняет карьеру; fired — конец игры */
+  function applyVerdict(verdict, score) {
+    const C = G.career, r = G.lastReport || {};
+    C.history.push({ day: G.day, verdict, score, profit: Math.round(r.profit || 0), ducks: r.ducks || 0, plan: r.plan || G.plan });
+    if (verdict === 'promo') { C.rank = Math.min(RANKS.length - 1, C.rank + 1); C.strikes = 0; C.wallet += 800 + 400 * C.rank; }
+    else if (verdict === 'stay') C.wallet += 400;
+    else if (verdict === 'fine') { C.strikes++; C.wallet -= 1500; }
+    C.last = verdict;
+  }
+
+  /* Ночь: всё, что случилось сегодня, переходит в завтра */
+  function nextDay() {
+    const r = G.lastReport || {};
+    const brief = [];
+    const mem = {
+      report: { ducks: r.ducks, plan: r.plan }, verdict: G.career.last,
+      leaks: G.leaks, raid: !!G.flags.raid, exposedGoose: !!G.flags.exposedGoose,
+      bribe: !!G.flags.bribe, bribeRumor: !!G.flags.bribe && U.chance(0.6),
+      innocent: G.flags.innocent || null, utkaCrashed: r.utkaCrashed, engnCrashed: r.engnCrashed,
+      goosePaid: (G.memory || {}).goosePaid, bribesTotal: ((G.memory || {}).bribesTotal || 0) + (G.flags.bribe ? 1 : 0),
+      foremanFixed: !!G.flags.foremanFixed, chaosEnd: r.chaosEnd || 0,
+    };
+
+    /* сотрудники за ночь */
+    const morale = (mem.innocent ? -8 : 0) + (mem.raid ? -6 : 0) + (r.chaosEnd > 70 ? -5 : 0);
+    let returned = 0, tired = 0;
+    for (let i = 0; i < G.emps.length; i++) {
+      const e = G.emps[i];
+      /* кто к 18:00 ещё шёл к лифту — всё равно ушёл */
+      if (!e.gone && (e.exiting || e.fired || e.quit || e.fled)) e.gone = e.fired ? 'fired' : e.fled ? 'fled' : e.quit ? 'quit' : 'home';
+      if (e.gone && e.gone !== 'home') { e.vacant = true; e.salaryPaid = 0; e.exiting = false; e.state = 'gone'; continue; }
+      const wasHome = e.gone === 'home' || e.home;
+      const gotBonus = e.bonus > 0;
+      e.gone = null;
+      e.days = (e.days || 0) + 1;
+      let s = wasHome ? U.randi(94, 100) : U.clamp(e.sanity + U.randi(46, 56), 40, 96);
+      s += morale + (gotBonus ? 8 : 0) - (e.fined ? 6 : 0);
+      e.sanity = U.clamp(s, 20, 100);
+      if (wasHome) returned++;
+      if (e.sanity < 60) tired++;
+      if (!e.evidence) e.suspicion = Math.round(e.suspicion * 0.6);
+      if (e.trait === 'lazy' && e.lazyFixed && U.chance(0.5)) e.lazyFixed = false;
+      e.clues.forEach(c => { if (c.day == null) c.day = G.day; });
+      if (e.clues.length > 12) e.clues = e.clues.slice(-12);
+      dayFields(e);
+    }
+    /* кто-то не выдержал и уволился за ночь — стол освобождается */
+    const stayers = G.emps.filter(e => !e.vacant && !e.gone);
+    const burnt = stayers.filter(e => e.sanity < 45 && e.trait !== 'spy');
+    let leaver = null;
+    if (burnt.length && U.chance(0.45)) leaver = U.pick(burnt);
+    else if (G.day >= 2 && U.chance(0.18)) leaver = U.pick(stayers.filter(e => e.trait === 'normal' || (e.trait === 'star' && !e.raised)));
+    if (leaver && stayers.length > 5) {
+      leaver.gone = 'quit'; leaver.vacant = true; leaver.leftDay = G.day; leaver.salaryPaid = 0; leaver.state = 'gone';
+      const why = leaver.sanity < 45 ? 'не выдержал{|а} вчерашнего безумия' : leaver.trait === 'star' ? 'ушёл{|ла} в ГусьКорп — там платят больше' : U.pick(['переезжает к маме в другой город', 'решил{|а} открыть свою пекарню', 'уходит выращивать утят на ферме']);
+      brief.unshift(U.fill(`Плохие новости: {name} ${leaver.surname} ${why} и уволил{ся|ась}. Заявление лежало на столе.`, leaver));
+    }
+    /* ГусьКорп вербует, если своих людей в офисе не осталось */
+    const spies = G.emps.filter(e => !e.gone && !e.vacant && e.trait === 'spy' && !e.doubleAgent);
+    if (!spies.length && U.chance(0.55)) {
+      const c = G.emps.filter(e => !e.vacant && e.trait === 'normal').sort((a, b) => a.sanity - b.sanity)[0];
+      if (c) { c.trait = 'spy'; c.recruited = true; mem.recruited = true; }
+    }
+
+    /* документы, которые можно разобрать и завтра */
+    const KEEP = ['rubber_legit', 'massage', 'coffee_machine', 'printer', 'enron', 'dotcom', 'denounce', 'it_spy', 'raise', 'bonds', 'charity', 'commission', 'goose_suit', 'severance', 'audit'];
+    G.carryDocs = G.inbox.filter(d => !d.old && KEEP.includes(d.key)).map(d => d.key);
+
+    /* кот: ночью тётя Валя насыпает корм, но к утру он снова не прочь поесть */
+    const cat = NPC.cat();
+    G.catHunger = cat ? U.clamp(cat.hunger * 0.3 + 25, 20, 55) : 40;
+
+    /* утренняя сводка для председателя */
+    const vac = G.emps.filter(e => e.vacant);
+    const pending = G.carryDocs.length;
+    const spyLeft = G.emps.some(e => !e.vacant && e.trait === 'spy' && !e.doubleAgent && e.evidence);
+    if (vac.length) brief.push(`Пустых столов: ${vac.length} (${vac.map(v => v.role.toLowerCase()).join(', ')}). Резюме кандидатов уже несут — нанимайте внимательно, ГусьКорп любит подсылать «кандидатов».`);
+    if (returned) brief.push(`Те, кого вы вчера отпустили домой (${returned}), вернулись отдохнувшими.`);
+    if (tired >= 3) brief.push('Многие пришли невыспавшимися: вчерашний бардак не прошёл даром. Начинаем день на нервах.');
+    if (mem.innocent) brief.push(`Офис до сих пор обсуждает увольнение ${mem.innocent}. Моральный дух упал.`);
+    if (spyLeft) brief.push('И кстати: тот, кого вы вчера поймали на шпионаже, до сих пор сидит за своим столом. Утечки продолжатся.');
+    if (mem.raid) brief.push('Комиссия по ценным бумагам прислала предписание. Посмотрите в лотке.');
+    if (mem.exposedGoose) brief.push('Гусев после вчерашнего скандала подал на нас в суд. Иск — в документах.');
+    if (G.rubber < 120) brief.push(`Резины на складе осталось ${Math.round(G.rubber)} кг — первым делом согласуйте закупку, иначе конвейер встанет.`);
+    if (pending) brief.push(`Вчерашние документы, до которых не дошли руки: ${pending}. Они уже в лотке.`);
+    if (G.owned.massage || G.owned.coffee) brief.push(`Вчерашние покупки работают: ${[G.owned.massage && 'массажное кресло', G.owned.coffee && 'новая кофемашина'].filter(Boolean).join(' и ')}.`);
+
+    G.memory = mem;
+    G.day++;
+    Market.newDay();
+    beginDay();
+    G.brief = brief;
+    save();
+  }
+
+  /* ---------- Сохранение (в начале каждого дня) ---------- */
+  const SAVE_KEY = 'mlo_save_v2';
+  const EMP_KEEP = ['uid', 'id', 'female', 'look', 'trait', 'pers', 'name', 'surname', 'role', 'salary', 'skill', 'stress', 'col', 'row', 'sanity',
+    'clues', 'suspicion', 'evidence', 'lazyFixed', 'doubleAgent', 'herring', 'gone', 'vacant', 'days', 'hiredDay', 'recruited', 'raised', 'age'];
+  const pickEmp = e => { const o = {}; EMP_KEEP.forEach(k => { if (e[k] !== undefined) o[k] = e[k]; }); return o; };
+  function save() {
+    try {
+      const o = {
+        v: 2, day: G.day, uidSeq: G.uidSeq, cash: G.cash, rep: G.rep, rubber: G.rubber, priceBase: G.priceBase,
+        career: G.career, owned: G.owned, memory: G.memory, catHunger: G.catHunger, carryDocs: G.inbox.filter(d => d.old).map(d => d.key),
+        docSeq: G.docSeq, brief: G.brief, emps: G.emps.map(pickEmp), alumni: G.alumni.slice(-20).map(pickEmp), market: Market.save(),
+      };
+      localStorage.setItem(SAVE_KEY, JSON.stringify(o));
+    } catch (err) { /* хранилище недоступно — играем без сохранения */ }
+  }
+  function saved() {
+    try { const o = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); return o && o.v === 2 ? o : null; } catch (err) { return null; }
+  }
+  function clearSave() { try { localStorage.removeItem(SAVE_KEY); } catch (err) { /* нет хранилища */ } }
+  function load(o) {
+    G = {
+      phase: 'title', day: o.day, uidSeq: o.uidSeq, emps: [], alumni: [],
+      cash: o.cash, rep: o.rep, rubber: o.rubber, priceBase: o.priceBase || CFG.DUCK_PRICE,
+      career: o.career, owned: o.owned || {}, memory: o.memory || {}, catHunger: o.catHunger || 40,
+      carryDocs: o.carryDocs || [], docSeq: o.docSeq || 410, brief: o.brief || [],
+    };
+    const restore = x => { const e = dayFields(Object.assign({ clues: [], suspicion: 0 }, x)); if (x.vacant) { e.salaryPaid = 0; e.state = 'gone'; } return e; };
+    G.emps = o.emps.map(restore);
+    G.alumni = (o.alumni || []).map(restore);
+    Market.load(o.market);
+    beginDay();
+    G.brief = o.brief || [];
+  }
+
   return {
-    stage, present, heal, hurt, money, log, toast, addNews, newGame, queue, minute,
+    stage, present, heal, hurt, money, log, toast, addNews, newGame, queue, minute, makeEmployee, byUid, scheduleTraitEvents, payrollNow,
+    applyVerdict, nextDay, save, saved, clearSave, load, RANKS, WEEK, WEEK_FULL, weekday,
     receiveDoc, decideDoc, ring, PHONE, phoneAction,
     callIn, endVisit, askWork, search, soul, bonus, fine, fire, sendHome, turn, quit, goHomeFromDesk, arrive, endDay,
   };

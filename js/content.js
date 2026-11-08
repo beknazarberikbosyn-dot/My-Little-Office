@@ -21,7 +21,8 @@ const Content = (() => {
           ['На складе (на момент запроса)', `${Math.round(G.rubber)} кг`],
         ],
         sign: 'Нач. снабжения Л. Резинкина',
-        correct: 'approve',
+        /* склад переполнен — закупка не обязательна */
+        correct: () => (G.rubber + G.sched.filter(ev => ev.type === 'deliver').reduce((t, ev) => t + ev.kg, 0) < 650 ? 'approve' : null),
         approve() {
           if (G.cash < total) return noCash();
           Sim.money(-total, 'materials');
@@ -58,9 +59,9 @@ const Content = (() => {
       return {
         title: 'Заявка: массажное кресло', from: 'HR-отдел', kind: 'memo',
         body: 'Сотрудники всё чаще смотрят в одну точку. Предлагаем поставить массажное кресло в комнату отдыха. Говорят, помогает не сойти с ума.',
-        rows: [['Стоимость', '$900'], ['Эффект', 'безумие растёт на 15% медленнее до конца дня']],
+        rows: [['Стоимость', '$900 (один раз)'], ['Эффект', 'безумие растёт на 15% медленнее — сегодня и во все следующие дни']],
         sign: 'HR-менеджер', correct: 'approve',
-        approve() { if (G.cash < 900) return noCash(); Sim.money(-900, 'office'); G.mods.decay *= 0.85; return R('Кресло установлено. Очередь к нему — уже на час вперёд.', 'good'); },
+        approve() { if (G.owned.massage) return R('Кресло уже стоит в комнате отдыха.', 'info'); if (G.cash < 900) return noCash(); Sim.money(-900, 'office'); G.mods.decay *= 0.85; G.owned.massage = true; return R('Кресло установлено. Очередь к нему — уже на час вперёд.', 'good'); },
         reject: () => R('Отклонено. Сотрудники продолжают смотреть в одну точку.', 'info'),
       };
     },
@@ -68,9 +69,9 @@ const Content = (() => {
       return {
         title: 'Заявка: новая кофемашина', from: 'Хозяйственный отдел', kind: 'memo',
         body: 'Старая кофемашина варит нечто, похожее на мазут. Предлагаем купить новую — эспрессо, капучино и даже латте!',
-        rows: [['Стоимость', '$600'], ['Эффект', '«Кофе всем» по телефону станет вдвое дешевле и полезнее'], ['Бонус', '+5 рассудка всем сразу']],
+        rows: [['Стоимость', '$600 (один раз)'], ['Эффект', '«Кофе всем» по телефону станет вдвое дешевле и полезнее — навсегда'], ['Бонус', '+5 рассудка всем сразу']],
         sign: 'Завхоз', correct: 'approve',
-        approve() { if (G.cash < 600) return noCash(); Sim.money(-600, 'office'); G.mods.coffee = true; Sim.present().forEach(e => Sim.heal(e, 5)); return R('Новая кофемашина шипит и радует. Офис пахнет латте.', 'good'); },
+        approve() { if (G.owned.coffee) return R('Новая кофемашина уже шипит на кухне.', 'info'); if (G.cash < 600) return noCash(); Sim.money(-600, 'office'); G.mods.coffee = true; G.owned.coffee = true; Sim.present().forEach(e => Sim.heal(e, 5)); return R('Новая кофемашина шипит и радует. Офис пахнет латте.', 'good'); },
         reject: () => R('Отклонено. Мазут продолжает литься.', 'info'),
       };
     },
@@ -265,7 +266,7 @@ const Content = (() => {
     },
 
     raise() {
-      const e = emp(x => x.trait === 'star');
+      const e = emp(x => x.trait === 'star' && !x.raised);
       if (!e) return null;
       const others = live(o => o !== e);
       const avg = others.length ? Math.round(others.reduce((s, o) => s + o.produced, 0) / others.length) : 0;
@@ -274,7 +275,7 @@ const Content = (() => {
         body: U.fill('Я делаю больше всех в офисе. ГусьКорп предлагает мне на $120 в день больше. Прошу повысить зарплату, иначе мне придётся уйти. С уважением, {name}.', e),
         rows: [['Текущая зарплата', `$${e.salary}/день`], ['Просит', '+$120/день'], ['Выработка сегодня', `${Math.round(e.produced)} уток`], ['Средняя по офису', `${avg} уток`]],
         sign: nm(e), correct: 'approve',
-        approve() { e.salary += 120; e.salaryPaid += 120; Sim.heal(e, 25); return R(U.fill('{name} счастлив{|а} и работает ещё усерднее.', e), 'good'); },
+        approve() { e.salary += 120; e.salaryPaid += 120; e.raised = true; Sim.heal(e, 25); return R(U.fill('{name} счастлив{|а} и работает ещё усерднее.', e), 'good'); },
         reject() {
           if (U.chance(0.6)) { Sim.queue({ t: G.time + 25, type: 'quit', eid: e.id }); return R(U.fill('{name} молча открывает сайт ГусьКорп с вакансиями…', e), 'warn'); }
           Sim.hurt(e, 20); return R(U.fill('{name} обидел{ся|ась}, но остал{ся|ась}.', e), 'warn');
@@ -303,10 +304,86 @@ const Content = (() => {
         approve() {
           const n = Math.min(200, Math.floor(G.ducks));
           G.ducks -= n; Sim.money(-n * G.price, 'charity'); G.rep += 8; Market.jump('QUAK', 2);
-          Sim.addNews('«Кря Индастриз» подарила уток детскому дому. Дети счастливы, утки тоже.');
+          Sim.addNews('charity');
           return R('Дети счастливы! «Утренний Кряк» пишет о вас статью. Репутация +8.', 'good');
         },
         reject() { G.rep -= 3; return R('Пресса написала: «Кря Индастриз пожалела уток для детей». Репутация −3.', 'warn'); },
+      };
+    },
+
+    /* ---- последствия вчерашнего дня ---- */
+    commission() {
+      return {
+        title: 'Предписание Комиссии по ценным бумагам', from: 'Комиссия по ценным бумагам (заказное письмо)', kind: 'letter',
+        body: 'По итогам вчерашней проверки в офисе «Кря Индастриз» выявлены нарушения: горны, летающие наличные и обезьяна без пропуска. Предписываем оплатить штраф до 12:00.',
+        rows: [['Штраф', '$2 000'], ['Срок', 'до 12:00 сегодня'], ['Если не оплатить', 'штраф удваивается, репутация −6'], ['Основание', 'протокол обыска № 2001']],
+        sign: 'Инспектор Строгов', correct: 'approve',
+        approve() { if (G.cash < 2000) return noCash(); Sim.money(-2000, 'chaos'); G.rep += 2; return R('Штраф оплачен. Инспектор Строгов удовлетворённо закрыл папку.', 'good'); },
+        reject() {
+          Sim.queue({ t: Math.max(G.time + 5, U.T(12, 0)), type: 'fn', fn: () => { Sim.money(-4000, 'chaos'); G.rep -= 6; Sim.toast('Комиссия удвоила неоплаченный штраф: −$4 000, репутация −6.', 'bad'); } });
+          return R('Предписание отклонено. Комиссия такого не прощает…', 'warn');
+        },
+      };
+    },
+    goose_suit() {
+      return {
+        title: 'Иск ГусьКорп о защите репутации', from: 'Юристы ГусьКорп «Гогот и партнёры»', kind: 'letter',
+        body: 'Наш клиент Г. Гусев глубоко оскорблён публикацией записи разговора. Предлагаем мировое соглашение: вы платите компенсацию и публично извиняетесь.',
+        rows: [['Компенсация', '$3 000'], ['Извинения', 'на первой полосе «Утреннего Кряка»'], ['Доказательства клиента', '«честное гусиное слово»'], ['Наша запись разговора', 'подлинная, есть у редакции']],
+        sign: 'Адвокат Б. Гогот', correct: 'reject',
+        approve() { if (G.cash < 3000) return noCash(); Sim.money(-3000, 'office'); G.rep -= 5; Market.jump('GOOS', 3); return R('Вы заплатили Гусеву и извинились. Пресса недоумевает, ГусьКорп ликует.', 'bad'); },
+        reject() { G.rep += 3; Market.jump('GOOS', -3); return R('Иск отклонён. Суд не принял «честное гусиное слово» как доказательство.', 'good'); },
+      };
+    },
+    severance() {
+      const who = (G.memory && G.memory.innocent) || 'бывший сотрудник';
+      return {
+        title: 'Претензия уволенного сотрудника', from: `${who} (через профсоюз)`, kind: 'letter',
+        body: `Меня уволили без причины, хотя я честно работал(а). Требую компенсацию, иначе обращаюсь в суд и в газеты.`,
+        rows: [['Заявитель', who], ['Требование', 'компенсация $700'], ['Если отказать', 'суд и статья в газете: ≈ −$1 500 и репутация −5'], ['Проверка HR', 'нарушений за сотрудником не найдено']],
+        sign: who, correct: 'approve',
+        approve() { if (G.cash < 700) return noCash(); Sim.money(-700, 'staff'); Sim.present().forEach(e => Sim.heal(e, 4)); return R('Компенсация выплачена. В офисе облегчённо выдохнули: босс умеет признавать ошибки.', 'good'); },
+        reject() {
+          Sim.queue({ t: G.time + 90, type: 'fn', fn: () => { Sim.money(-1500, 'staff'); G.rep -= 5; Sim.toast('Суд встал на сторону уволенного сотрудника: −$1 500, репутация −5.', 'bad'); } });
+          return R('Претензия отклонена. Юристы говорят, суд будет через пару часов.', 'warn');
+        },
+      };
+    },
+    audit() {
+      return {
+        title: 'Служебная проверка: «конверт»', from: 'Служба безопасности, п-к Шпионов', kind: 'memo',
+        body: 'Поступили сведения, что вчера менеджер получил от ГусьКорп конверт с наличными. Предлагаем добровольно сдать деньги в кассу компании и закрыть вопрос.',
+        rows: [['Сдать в кассу', '$5 000 (уже в балансе компании — просто фиксируем)'], ['Если признаться', 'репутация +2, совет оценит честность'], ['Если отрицать', 'проверка продолжится — риск скандала']],
+        sign: 'П-к Шпионов', correct: 'approve',
+        approve() { G.rep += 2; G.career.strikes = Math.max(0, G.career.strikes); return R('Вы признались. Полковник кивнул: «Честность — редкость. Но больше так не делайте».', 'good'); },
+        reject() {
+          if (U.chance(0.55)) { G.rep -= 10; Market.jump('QUAK', -4); Sim.addNews('bribe_rumor'); return R('Проверка нашла свидетелей. Скандал! Репутация −10.', 'bad'); }
+          return R('Проверка зашла в тупик. Пока что.', 'warn');
+        },
+      };
+    },
+    ibn_tip() {
+      const k = G.market.t.IBN;
+      const ev = G.market.ev.find(x => x.id === 'IBN');
+      const a = emp(e => e.role === 'Аналитик') || emp(() => true);
+      return {
+        title: 'Купить акции Ай-Би-Эн?', from: `Аналитик ${nm(a)}`, kind: 'memo',
+        body: 'Предлагаю вложить свободные деньги в Ай-Би-Эн. Компания скучная, но сегодня о ней говорят. Прежде чем решать, загляните во вкладку «Новости» — там пишут, чего ждать.',
+        rows: [['Бумага', 'IBN — Ай-Би-Эн'], ['Цена сейчас', `$${k.price.toFixed(2)}`], ['Сумма', '$5 000'], ['Подсказка', 'ищите в газете слухи про Ай-Би-Эн']],
+        sign: nm(a),
+        correct: () => (!ev ? null : ev.kind === 'spike' ? (G.time < ev.start + ev.len ? 'approve' : null) : 'reject'),
+        approve() { const n = Market.buy('IBN', 5000); return n ? R(`Куплено ${n} акций Ай-Би-Эн. Следите за курсом в терминале.`, 'info') : noCash(); },
+        reject: () => R('Отклонено. Деньги остались в кассе.', 'info'),
+      };
+    },
+    insurance() {
+      return {
+        title: 'Страховка конвейера на сегодня', from: 'Страховая компания «Тихая заводь»', kind: 'invoice',
+        body: 'Застрахуйте конвейер на один день. Если он сломается, наши мастера починят его за 15 минут вместо 50.',
+        rows: [['Стоимость', '$350'], ['Действует', 'до 18:00 сегодня'], ['Ремонт при поломке', '15 минут вместо 50'], ['Мастер цеха говорит', G.flags.bearing ? '«подшипник сыплется, лучше застраховать»' : '«вроде всё крутится»']],
+        sign: 'Агент В. Тиховодов', correct: () => (G.flags.bearing ? 'approve' : null),
+        approve() { if (G.cash < 350) return noCash(); Sim.money(-350, 'office'); G.flags.insured = true; return R('Конвейер застрахован до вечера.', 'good'); },
+        reject: () => R('Отклонено. Михалыч крестится на пресс.', 'info'),
       };
     },
   };
@@ -326,27 +403,54 @@ const Content = (() => {
   }
 
   function planDocs() {
-    const P = [];
+    const P = [], day = G.day, mem = G.memory || {};
     const add = (h, m, key) => P.push({ t: U.T(h, m) + U.randi(-5, 5), key });
+    const maybe = (p, h, m, key) => { if (day === 1 || U.chance(p)) add(h, m, key); };
+    const live = fn => G.emps.some(e => !e.gone && fn(e));
     add(9, 10, 'rubber_legit');
-    add(9, 40, U.pick(['massage', 'coffee_machine', 'printer']));
-    add(10, 5, 'enron');
+    const ups = ['printer'];
+    if (!G.owned.massage) ups.push('massage');
+    if (!G.owned.coffee) ups.push('coffee_machine');
+    maybe(0.8, 9, 40, U.pick(ups));
+    if (G.market.t.ENGN.state === 'aaa') add(10, 5, 'enron');
     const adEarly = U.chance(0.55);
     if (adEarly) add(10, 25, 'ad');
-    add(10, 45, 'denounce');
-    add(11, 10, 'dotcom');
-    add(11, 35, 'rubber_fake');
-    add(12, 10, 'it_spy');
-    add(12, 45, 'contract_legit');
-    add(13, 15, 'vacation');
+    maybe(0.75, 10, 45, 'denounce');
+    if (G.market.t.UTKA.state === 'bubble') add(11, 10, 'dotcom');
+    maybe(0.8, 11, 35, 'rubber_fake');
+    if (day === 1 || live(e => e.trait === 'spy' && !e.doubleAgent) || U.chance(0.35)) add(12, 10, 'it_spy');
+    maybe(0.85, 12, 45, 'contract_legit');
+    maybe(0.8, 13, 15, 'vacation');
     add(13, 45, 'rubber_legit');
-    add(14, 20, 'overtime');
-    add(14, 55, 'contract_fake');
-    add(15, 30, 'raise');
+    maybe(0.7, 14, 20, 'overtime');
+    maybe(0.75, 14, 55, 'contract_fake');
+    if (live(e => e.trait === 'star' && !e.raised)) maybe(0.7, 15, 30, 'raise');
     add(16, 5, 'bonds');
-    add(16, 35, 'charity');
+    maybe(0.7, 16, 35, 'charity');
     if (!adEarly) add(17, 0, 'ad');
+    /* вчерашние поступки возвращаются бумагами */
+    if (mem.raid) add(9, 25, 'commission');
+    if (mem.exposedGoose) add(10, 15, 'goose_suit');
+    if (mem.innocent) add(9, 55, 'severance');
+    if (mem.bribe) add(11, 0, 'audit');
+    if (day > 1) {
+      if (G.market.ev.some(e => e.id === 'IBN')) add(11, 20, 'ibn_tip');
+      if (U.chance(0.5)) add(12, 25, 'insurance');
+    }
     return P;
+  }
+
+  function planCalls() {
+    const C = [], day = G.day, mem = G.memory || {};
+    const add = (h, m, key) => C.push({ t: U.T(h, m), key });
+    if (!mem.exposedGoose) add(10, U.randi(35, 55), 'goose');
+    if (day === 1 || U.chance(0.5)) add(12, U.randi(15, 35), 'mom');
+    if (day === 1 || !mem.foremanFixed || U.chance(0.4)) add(13, U.randi(30, 50), 'foreman');
+    add(14, U.randi(40, 55), 'press');
+    if (day === 1 || U.chance(0.5)) add(15, U.randi(10, 25), 'broker');
+    add(16, U.randi(30, 45), 'founder');
+    if (Hire.vacancies().length) add(11, U.randi(25, 45), 'agency');
+    return C;
   }
 
   /* ---------- Собеседники по телефону ---------- */
@@ -357,6 +461,7 @@ const Content = (() => {
     foreman: { name: 'Михалыч', title: 'Мастер цеха', look: { skin: '#d9a47a', hair: '#4a2f1c', hairStyle: 'bald', shirt: '#3a6ea5', pants: '#2a3550' } },
     broker: { name: 'Джордан', title: 'Брокер «Стрэттон-Дак»', look: { skin: '#f6d2b0', hair: '#c9a14a', hairStyle: 'slick', shirt: '#ffffff', tie: '#d4a017', pants: '#222', jacket: '#1b1b22' } },
     press: { name: 'Журналистка', title: 'Газета «Утренний Кряк»', look: { female: true, skin: '#f1c9a5', hair: '#a8432a', hairStyle: 'bob', shirt: '#f3e2a0', pants: '#555', glasses: true } },
+    agency: { name: 'Жанна Подборова', title: 'Агентство «Утиные кадры»', look: { female: true, skin: '#eec39a', hair: '#c9a14a', hairStyle: 'long', shirt: '#f0b9c4', pants: '#4a3a4a' } },
   };
 
   const reply = (speaker, text) => UI.dialog({ speaker, text });
@@ -365,13 +470,20 @@ const Content = (() => {
     goose: {
       who: () => SP.goose,
       open() {
+        const again = (G.memory && G.memory.bribesTotal) || 0;
+        const sum = again ? 8000 : G.day > 1 ? 6000 : 5000;
+        const text = again
+          ? `Партнёр! Гусев. Наше прошлое сотрудничество было таким плодотворным… Теперь $${U.num(sum)} за список ваших клиентов. Вы же уже в деле, га-га!`
+          : G.day > 1
+            ? `Снова Гусев. Вы тогда отказались — уважаю. Но я поднимаю ставку: $${U.num(sum)} за чертежи «Пищалки 3.0». Последнее предложение. Ну, почти.`
+            : 'Алло, коллега! Гусев, ГусьКорп. Давайте без формальностей: $5 000 наличными за формулу вашей новой пищалки. Никто не узнает. Ну, почти никто. Га-га!';
         UI.dialog({
           speaker: SP.goose,
-          text: 'Алло, коллега! Гусев, ГусьКорп. Давайте без формальностей: $5 000 наличными за формулу вашей новой пищалки. Никто не узнает. Ну, почти никто. Га-га!',
+          text,
           options: [
-            { label: 'Взять конверт (+$5 000)', fn: () => { Sim.money(5000, 'bribe'); G.flags.bribe = true; Market.jump('GOOS', 6); G.rep -= 6; reply(SP.goose, 'Приятно иметь с вами дело! Конверт уже у вашей секретарши. Га-га-га!'); } },
+            { label: `Взять конверт (+$${U.num(sum)})`, fn: () => { Sim.money(sum, 'bribe'); G.flags.bribe = true; Market.jump('GOOS', 6); G.rep -= again ? 8 : 6; reply(SP.goose, 'Приятно иметь с вами дело! Конверт уже у вашей секретарши. Га-га-га!'); } },
             { label: 'Отказаться', fn: () => { G.rep += 2; reply(SP.goose, 'Жаль, жаль… Но у меня есть и другие способы узнать ваши секреты. Га-га.'); } },
-            { label: 'Записать разговор и отдать прессе', fn: () => { G.rep += 6; Market.jump('GOOS', -6); G.flags.exposedGoose = true; Sim.addNews('Скандал: глава ГусьКорп пытался подкупить менеджера «Кря Индастриз». Запись у редакции.', true); reply(SP.goose, '…Алло? Вы что, записываете?! Это возмути… *гудки*'); } },
+            { label: 'Записать разговор и отдать прессе', fn: () => { G.rep += 6; Market.jump('GOOS', -6); G.flags.exposedGoose = true; Sim.addNews('goose_exposed'); reply(SP.goose, '…Алло? Вы что, записываете?! Это возмути… *гудки*'); } },
           ],
         });
       },
@@ -380,9 +492,11 @@ const Content = (() => {
     mom: {
       who: () => SP.mom,
       open() {
+        const t = G.day === 1 ? 'Алло, сынок! Это мама. Ты сегодня покушал? Голос у тебя какой-то уставший. Ты там не перерабатываешь?'
+          : U.pick(['Сынок, я видела тебя в газете! Ну, не тебя, а твоих уток. Ты там не перерабатываешь?', 'Алло! Ты опять не позавтракал, я по голосу слышу. Как там твои утки?', 'Сынок, тётя Люба спрашивает, нет ли у вас работы для её племянника. Он, правда, любит поспать…']);
         UI.dialog({
           speaker: SP.mom,
-          text: 'Алло, сынок! Это мама. Ты сегодня покушал? Голос у тебя какой-то уставший. Ты там не перерабатываешь?',
+          text: t,
           options: [
             { label: 'Да, мам, всё хорошо', fn: () => reply(SP.mom, 'Вот и молодец. Шапку не забудь! Целую!') },
             { label: 'Мам, я на совещании!', fn: () => reply(SP.mom, 'Ой, всё. Я просто спросить. Ну работай, работай…') },
@@ -396,9 +510,11 @@ const Content = (() => {
       open() {
         UI.dialog({
           speaker: SP.foreman,
-          text: 'Начальник, конвейер стучит. Подшипник сыпется. Надо $700 на ремонт, иначе через час-полтора встанем.',
+          text: G.day > 1 && G.memory && G.memory.foremanFixed
+            ? 'Начальник, вчерашний ремонт держится, но теперь ремень пищит. $700 — и до конца недели спокойно. Иначе через час-полтора может встать.'
+            : 'Начальник, конвейер стучит. Подшипник сыпется. Надо $700 на ремонт, иначе через час-полтора встанем.',
           options: [
-            { label: 'Оплатить ремонт ($700)', fn: () => { if (G.cash < 700) { reply(SP.foreman, 'Денег-то нет, начальник… Ну, будем молиться.'); maybeBreak(); return; } Sim.money(-700, 'office'); reply(SP.foreman, 'Понял, чиню. Будет как новенький.'); } },
+            { label: 'Оплатить ремонт ($700)', fn: () => { if (G.cash < 700) { reply(SP.foreman, 'Денег-то нет, начальник… Ну, будем молиться.'); maybeBreak(); return; } Sim.money(-700, 'office'); G.flags.foremanFixed = true; reply(SP.foreman, 'Понял, чиню. Будет как новенький.'); } },
             { label: 'Потерпит до завтра', fn: () => { maybeBreak(); reply(SP.foreman, 'Ну, как скажете… Я предупредил.'); } },
           ],
         });
@@ -410,7 +526,8 @@ const Content = (() => {
       open() {
         UI.dialog({
           speaker: SP.broker,
-          text: 'Слушай сюда, друг! Акции «ПенниДак» — это ракета! Вложи $3 000 — к вечеру утроим! Мне всего лишь комиссия 50%. Ну что, по рукам?',
+          text: G.day === 1 ? 'Слушай сюда, друг! Акции «ПенниДак» — это ракета! Вложи $3 000 — к вечеру утроим! Мне всего лишь комиссия 50%. Ну что, по рукам?'
+            : U.pick(['Друг! Это снова Джордан! Забудь «ПенниДак» — сегодня «ДакНет», интернет для уток! $3 000 — к вечеру втрое!', 'Джордан на связи! Есть закрытое IPO «Кряк-Онлайн». Только для своих: $3 000, к вечеру утроим. Ты же свой?']),
           options: [
             { label: 'Вложить $3 000', fn: () => { if (G.cash < 3000) { reply(SP.broker, 'Нет денег? Тогда не трать моё время!'); return; } Sim.money(-3000, 'invest'); G.market.penny += 3000; reply(SP.broker, 'Вот это я понимаю! Ты настоящий волк! Результат узнаешь вечером.'); } },
             { label: 'Нет, спасибо', fn: () => reply(SP.broker, 'Ну и сиди со своими утками! *бросил трубку*') },
@@ -438,7 +555,7 @@ const Content = (() => {
       who: () => SP.founder,
       open() {
         const el = Math.max(30, G.time - CFG.DAY_START);
-        const pace = G.ducks / (CFG.PLAN * el / (CFG.DAY_END - CFG.DAY_START));
+        const pace = G.ducks / (G.plan * el / (CFG.DAY_END - CFG.DAY_START));
         const t1 = pace >= 1 ? 'Слышал, конвейер работает отлично!' : pace >= 0.8 ? 'Конвейер идёт, но до плана далековато.' : 'Утки еле ползут по конвейеру. Совет будет недоволен.';
         const t2 = G.chaos >= 60 ? ' И что за вопли у вас на этаже? Мне отсюда слышно!' : G.chaos >= 35 ? ' Говорят, сотрудники нервничают. Присмотри за ними.' : ' В офисе, говорят, спокойно. Так держать.';
         const t3 = G.leaks ? ' И найди уже, кто сливает наши секреты ГусьКорп!' : '';
@@ -455,13 +572,41 @@ const Content = (() => {
     },
   };
 
+  /* кадровое агентство: проверенные кандидаты за деньги */
+  CALLS.agency = {
+    who: () => SP.agency,
+    cond: () => Hire.vacancies().length > 0 && !G.flags.agency,
+    open() {
+      G.flags.agency = true;
+      const v = Hire.vacancies();
+      if (!v.length) { reply(SP.agency, 'Ой, у вас уже нет вакансий? Тогда до встречи!'); return; }
+      UI.dialog({
+        speaker: SP.agency,
+        text: `Агентство «Утиные кадры», здравствуйте! Слышали, у вас ${v.length === 1 ? 'освободилось место' : 'освободились места'}. Пришлём два резюме проверенных кандидатов — без лентяев и без шпионов, гарантия. Всего $250.`,
+        options: [
+          { label: 'Присылайте ($250)', fn: () => {
+            if (G.cash < 250) { reply(SP.agency, 'Ой, у вас с деньгами туго… Перезвоните, когда разбогатеете!'); return; }
+            Sim.money(-250, 'staff');
+            Sim.queue({ t: G.time + 15, type: 'resume', role: v[0].role, trait: U.chance(0.4) ? 'star' : 'normal' });
+            Sim.queue({ t: G.time + 25, type: 'resume', role: (v[1] || v[0]).role, trait: 'normal' });
+            reply(SP.agency, 'Чудесно! Резюме будут у вас через 15–25 минут.');
+          } },
+          { label: 'Спасибо, сами справимся', fn: () => reply(SP.agency, 'Как скажете! Только осторожнее: ГусьКорп любит подсылать своих «кандидатов».') },
+        ],
+      });
+    },
+    missed: () => 'Звонили из кадрового агентства.',
+  };
+
   function maybeBreak() {
+    G.flags.bearing = true;
     if (G.flags.breakScheduled) return;
     G.flags.breakScheduled = true;
     if (U.chance(0.7)) Sim.queue({ t: G.time + U.randi(55, 90), type: 'breakdown' });
   }
 
   function intro(done) {
+    if (G.day > 1) { morning(done); return; }
     UI.dialog({
       speaker: SP.founder,
       pages: [
@@ -474,6 +619,25 @@ const Content = (() => {
       ],
       onDone: done,
     });
+  }
+
+  /* Утро второго и следующих дней: председатель напоминает, чем закончился вчерашний */
+  function morning(done) {
+    const C = G.career, mem = G.memory || {};
+    const rank = Sim.RANKS[C.rank];
+    const wd = Sim.WEEK_FULL[Sim.weekday()];
+    const hello = Sim.weekday() === 0 ? `Доброе утро! ${wd}, день ${G.day}. Надеюсь, выходные прошли спокойно.` : `Доброе утро! ${wd}, день ${G.day}.`;
+    const v = {
+      promo: `${hello} Ещё раз поздравляю с повышением: теперь вы — ${rank.toLowerCase()}. Но и спрос больше: план на сегодня — ${U.num(G.plan)} уток.`,
+      stay: `${hello} Вчера совет оставил вас на должности. Давайте сегодня без сюрпризов. План — ${U.num(G.plan)} уток.`,
+      fine: `${hello} Вчерашний штраф — это жёлтая карточка. Ещё один провальный день — и красная. План — ${U.num(G.plan)} уток.`,
+    }[mem.verdict] || `${hello} План на сегодня — ${U.num(G.plan)} уток.`;
+    const pages = [v];
+    const brief = (G.brief || []).slice();
+    while (brief.length) pages.push(brief.splice(0, 2).join(' '));
+    const stocks = Market.stocksValue();
+    pages.push(`Касса: ${U.money(G.cash)}${stocks > 1 ? `, акции в портфеле: ${U.money(stocks)}` : ''}. Резины на складе: ${Math.round(G.rubber)} кг. Репутация: ${Math.round(G.rep)} из 100. В 18:00 жду вас на совете.`);
+    UI.dialog({ speaker: SP.founder, pages, onDone: done });
   }
 
   /* ---------- Сотрудники сами приходят к менеджеру ---------- */
@@ -665,5 +829,5 @@ const Content = (() => {
     return { e: o.e, r: VISITS[o.k].make(o.e, o.ctx) };
   }
 
-  return { makeDoc, planDocs, CALLS, SP, intro, STAGE_TXT, pickVisit };
+  return { makeDoc, planDocs, planCalls, CALLS, SP, intro, STAGE_TXT, pickVisit };
 })();

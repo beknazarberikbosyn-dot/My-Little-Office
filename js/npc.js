@@ -206,7 +206,7 @@ const NPC = (() => {
   function serverVisit(e) {
     const ok = AUTH.includes(e.role);
     const seen = akhmet() && akhmet().home && idle(akhmet()) && !akhmet().away;
-    srvLog.unshift({ t: G.time, name: `${e.name} ${e.surname}`, role: e.role, ok, seen, eid: e.id });
+    srvLog.unshift({ t: G.time, name: `${e.name} ${e.surname}`, role: e.role, ok, seen, eid: e.id, uid: e.uid });
     if (!ok && seen) {
       const spy = e.trait === 'spy' && !e.doubleAgent;
       addClue(e, U.fill('копал{ся|ась} в серверной без допуска (заметил Ахмет)', e), spy ? 'disk' : 'alert', spy ? 30 : 15, spy);
@@ -407,7 +407,7 @@ const NPC = (() => {
   function makeCat() {
     cat = {
       key: 'cat', isCat: true, name: 'Кексик', x: P.catBed.x, y: P.catBed.y, left: false, pose: 'loaf',
-      path: [], speed: 30, script: null, moving: false, hunger: 42, food: false, onDesk: false, feeder: null, anim: 0,
+      path: [], speed: 30, script: null, moving: false, hunger: G.catHunger != null ? G.catHunger : 42, food: false, onDesk: false, feeder: null, anim: 0,
     };
   }
   const CAT_DESK = { x: 84, y: 198 }, CAT_DESK_TOP = { x: 84, y: 177 };
@@ -530,10 +530,24 @@ const NPC = (() => {
     return true;
   }
 
+  /* Новый сотрудник выходит из лифта и идёт к своему столу */
+  function arriveNew(e) {
+    e.key = 'e' + e.uid; e.speed = 44; e.pose = 'stand';
+    e.x = P.elevator.x; e.y = P.elevator.y + 2;
+    e.state = 'walk'; e.purpose = 'desk'; e.newbie = true;
+    World.openElevator();
+    run(e, [{ secs: 0.4 }, { go: pt(Plan.seat(e.id), { dir: 'down' }) }], () => {
+      Sim.arrive(e);
+      say(e, U.pick(['Всем привет!', 'Где тут кофе?', 'Это мой стол? Ура!']), 2);
+      Sim.toast(U.fill('{name} {вышел|вышла} на работу и сел{|а} за свой стол.', e), 'good', () => UI.openDossier(e));
+    });
+    say(e, U.fill('Здравствуйте! Я {новенький|новенькая}!', e), 2.5);
+  }
+
   /* ================= Публичное ================= */
   function init() {
     staff = []; litter = []; srvLog = []; busy = {}; transit = []; vseq = 0;
-    G.emps.forEach(e => { const s = Plan.seat(e.id); e.x = s.x; e.y = s.y; e.key = 'e' + e.id; e.speed = 44; e.pose = 'stand'; });
+    G.emps.forEach(e => { const s = Plan.seat(e.id); e.x = s.x; e.y = s.y; e.key = 'e' + e.uid; e.speed = 44; e.pose = 'stand'; e.hx = null; e.bubble = null; });
     mk('galya', P.galya.x, P.galya.y, { home: true, speed: 54 });
     mk('akhmet', P.akhmet.x, P.akhmet.y, { pose: 'desk', home: true });
     mk('zina', P.zina.x, P.zina.y, { pose: 'desk' });
@@ -590,7 +604,7 @@ const NPC = (() => {
 
   return {
     init, minute, update, run, stop, errand, coolerChat, backToDesk, goOffice, leave, canCall, available, taskLabel,
-    selfVisit, deliverDoc, galyaCoffee, courier, pizza, psySession, meeting, clickCat, catNear, catHungry, addLitter, litterNear,
+    selfVisit, deliverDoc, arriveNew, galyaCoffee, courier, pizza, psySession, meeting, clickCat, catNear, catHungry, addLitter, litterNear,
     staff: () => staff, cat: () => cat, litter: () => litter, srvLog: () => srvLog, transit: () => transit,
     galya, akhmet, busy: () => busy,
   };

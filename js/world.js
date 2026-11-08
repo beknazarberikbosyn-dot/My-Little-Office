@@ -10,7 +10,7 @@ const World = (() => {
   const AKH_DESK = { x: 90, y: 56, w: 26 };
   const CAP = '#3d3448', CAP_L = '#5d5068';
 
-  let bg = null, t = 0, shakeT = 0, elevT = 0, elevOpen = 0;
+  let bg = null, DS = 1, tickW = 0, tickN = 0, t = 0, shakeT = 0, elevT = 0, elevOpen = 0;
   let hits = [], parts = [], hover = null, scale = 3, lastShout = 0, noteT = 0;
   const belt = { pos: 0, ducks: [], acc: 0, spawnT: 0 };
   const bubEls = {};
@@ -42,8 +42,11 @@ const World = (() => {
       if (e2 <= dx) { err += dx; y0 += sy; }
     }
   }
-  const txt = (s, x, y, c) => Font.draw(Spr.ctx(), s, x, y, c);
-  const txtC = (s, cx, y, c) => Font.draw(Spr.ctx(), s, Math.round(cx - Font.width(s) / 2), y, c);
+  /* надписи: x — левый край, cy — центр строки по вертикали */
+  const SIGN = { face: 'tick', weight: 600, size: 7.5 };
+  const TICK = { face: 'tick', weight: 500, size: 6.6 };
+  const txt = (s, x, cy, c, o) => Font.draw(Spr.ctx(), s, x, cy, c, o);
+  const txtC = (s, cx, cy, c, o) => Font.draw(Spr.ctx(), s, cx, cy, c, Object.assign({ align: 'center' }, o));
 
   /* ---------- Полы ---------- */
   function floor(x, y, w, h, kind) {
@@ -126,9 +129,9 @@ const World = (() => {
     for (let xx = x + 20; xx < x + w; xx += 40) R(xx, y, 2, 4, '#3d3448');
   }
   function plaque(s, x, y, bgc, fg) {
-    const w = Font.width(s) + 4;
-    R(x, y, w, 9, U.shade(bgc, -40)); R(x + 1, y + 1, w - 2, 7, bgc);
-    txt(s, x + 2, y + 2, fg);
+    const w = Math.ceil(Font.width(s, SIGN) + 6);
+    R(x, y, w, 11, U.shade(bgc, -40)); R(x + 1, y + 1, w - 2, 9, bgc); R(x + 1, y + 1, w - 2, 1, U.shade(bgc, 24));
+    txt(s, x + 3, y + 5.6, fg, SIGN);
   }
   function plant(x, y, big) {
     const h = big ? 18 : 12;
@@ -145,8 +148,11 @@ const World = (() => {
   /* ---------- Статичный фон ---------- */
   function buildBg() {
     const cv = document.createElement('canvas');
-    cv.width = W; cv.height = H;
-    Spr.use(cv.getContext('2d'));
+    cv.width = W * DS; cv.height = H * DS;
+    const g = cv.getContext('2d');
+    g.setTransform(DS, 0, 0, DS, 0, 0);
+    g.imageSmoothingEnabled = false;
+    Spr.use(g);
     R(0, 0, W, H, '#2a2230');
 
     /* полы */
@@ -213,7 +219,7 @@ const World = (() => {
     R(184, 92, 5, 10, '#d23c3c'); R(185, 90, 3, 2, '#333'); R(184, 92, 5, 1, '#f06a6a');
     R(410, 90, 30, 14, '#a8784a'); R(411, 91, 28, 12, '#c9a06a');
     [[413, 92, '#fff'], [421, 93, '#f3e2a0'], [429, 92, '#a9c8e8'], [415, 98, '#f0b9c4'], [426, 98, '#fff']].forEach(([x, y, c]) => { R(x, y, 7, 5, c); R(x + 3, y, 1, 1, '#d23c3c'); });
-    R(448, 90, 20, 14, '#2a2a2a'); R(449, 91, 18, 12, '#ffd23f'); txt('QUAK', 450, 94, '#3b2414');
+    R(448, 90, 20, 14, '#2a2a2a'); R(449, 91, 18, 12, '#ffd23f'); txtC('QUAK', 458, 97, '#3b2414', { face: 'sign', size: 5.5 });
 
     /* ---- Бухгалтерия ---- */
     R(10, 3, 30, 16, '#f3ead6');
@@ -222,7 +228,7 @@ const World = (() => {
     R(22, 64, 16, 16, '#4a4f58'); R(22, 64, 16, 2, '#6a707a'); R(24, 67, 12, 11, '#3a3f48');
     R(28, 70, 4, 4, '#c9a14a'); R(29, 71, 2, 2, '#3a3f48'); R(33, 69, 2, 5, '#888');
     plant(8, 80);
-    R(44, 6, 8, 10, '#fff'); R(45, 7, 6, 1, '#999'); R(45, 9, 6, 1, '#999'); txt('$', 46, 10, '#3f8f3a');
+    R(44, 6, 8, 10, '#fff'); R(45, 7, 6, 1, '#999'); R(45, 9, 6, 1, '#999'); txtC('$', 48, 11.5, '#3f8f3a', { face: 'sign', size: 7 });
 
     /* ---- Серверная ---- */
     [92, 107, 122].forEach(x => {
@@ -260,7 +266,7 @@ const World = (() => {
 
     /* ---- Ресепшен ---- */
     R(308, 2, 38, 10, '#3b2414'); R(309, 3, 36, 8, '#ffd23f');
-    Spr.duck(310, 3); txt('КРЯ', 324, 5, '#3b2414');
+    Spr.duck(310, 3); txt('КРЯ', 324, 7, '#3b2414', { face: 'sign', size: 7 });
     R(350, 0, 40, 23, '#7a808a'); R(351, 1, 38, 22, '#9aa0aa');
     plant(384, 40, true);
     [366, 378, 390].forEach(x => chair(x, 72, '#3b6ea8'));
@@ -294,19 +300,19 @@ const World = (() => {
     /* ---- Переговорная ---- */
     R(360, 129, 40, 10, '#fff'); R(360, 129, 40, 1, '#ccc');
     line(362, 137, 370, 134, '#3f8f3a'); line(370, 134, 378, 135, '#3f8f3a'); line(378, 135, 386, 131, '#3f8f3a'); line(386, 131, 396, 130, '#d23c3c');
-    txt('ПЕРЕГОВОРНАЯ', 410, 132, '#d8f0e0');
+    txt('ПЕРЕГОВОРНАЯ', 408, 134, '#d8f0e0', SIGN);
     Plan.MEET_SEATS.filter(s => !s.back).forEach(s => chair(s.x, s.y + 4, '#2a2a2a'));
 
     /* ---- Склад ---- */
-    txt('СКЛАД', 456, 182, '#3a3a34');
+    txt('СКЛАД', 472, 185, '#3a3a34', Object.assign({ align: 'right' }, SIGN));
     R(358, 222, 12, 8, '#d4a017'); R(358, 222, 12, 1, '#f0c040'); R(360, 216, 2, 6, '#555'); R(364, 230, 3, 2, '#222');
     for (let x = 352; x < 476; x += 10) { R(x, 232, 5, 2, '#e8c33a'); R(x + 5, 232, 5, 2, '#2a2a2a'); }
 
     /* ---- Цех ---- */
-    R(98, 246, 24, 18, '#c49a6c'); R(98, 246, 24, 2, '#d9b384'); R(98, 263, 24, 1, '#9b764d'); txt('QUAK', 102, 252, '#6b4a2e');
+    R(98, 246, 24, 18, '#c49a6c'); R(98, 246, 24, 2, '#d9b384'); R(98, 263, 24, 1, '#9b764d'); txtC('QUAK', 110, 255.5, '#6b4a2e', { face: 'sign', size: 6.5 });
     for (let x = 130; x < 412; x += 24) R(x, 262, 2, 8, '#2a2a30');
     R(444, 244, 14, 18, '#4a4e58'); R(445, 245, 12, 6, '#1a1e24'); R(447, 253, 2, 2, '#e04040'); R(451, 253, 2, 2, '#5dff7a'); R(455, 253, 2, 2, '#ffd23f');
-    txt('ЦЕХ', 445, 264, '#8a8e98');
+    txtC('ЦЕХ', 451, 267, '#8a8e98', SIGN);
     return cv;
   }
 
@@ -421,7 +427,7 @@ const World = (() => {
     R(x + 4, y + 16, 18, 6, '#4e2216'); R(x + 12, y + 18, 3, 1, '#d4a24c');
     R(x + 62, y + 16, 18, 6, '#4e2216'); R(x + 70, y + 18, 3, 1, '#d4a24c');
     R(x + 29, y + 15, 26, 8, '#a8832e'); R(x + 30, y + 16, 24, 6, '#d4a24c');
-    txtC('БОСС', x + 42, y + 16.5, '#5a3a10');
+    txtC('БОСС', x + 42, y + 19, '#5a3a10', { face: 'sign', size: 5.6 });
     /* монитор с графиком QUAK */
     R(x + 2, y - 10, 18, 16, '#d8d0bc'); R(x + 2, y - 10, 18, 1, '#ece6d6'); R(x + 18, y - 10, 2, 16, '#b3aa93');
     R(x + 4, y - 8, 13, 10, '#06140a');
@@ -443,7 +449,7 @@ const World = (() => {
     if (G.inbox.length) {
       const by = y - 2 - n * 2 + (Math.floor(t * 3) % 2);
       R(x + 66, by - 6, 8, 8, '#3b0f0f'); R(x + 67, by - 5, 6, 6, '#d23c3c');
-      txt(String(Math.min(9, G.inbox.length)), x + 69, by - 4.5, '#fff');
+      txtC(String(Math.min(9, G.inbox.length)), x + 70, by - 2, '#fff', { face: 'sign', size: 6 });
     }
     /* телефон */
     const ring = G.call && Math.floor(t * 10) % 2;
@@ -488,7 +494,7 @@ const World = (() => {
       R(x, y, 12, 11, '#8a6a3a'); R(x, y, 12, 1, '#b08a50'); R(x, y + 4, 12, 1, '#6a4a22'); R(x, y + 8, 12, 1, '#6a4a22');
       R(x + 3, y + 1, 6, 3, '#1e1e1e'); R(x + 4, y + 1, 2, 1, '#3a3a3a');
     }
-    if (!n) txtC('ПУСТО', 418, 196, '#d23c3c');
+    if (!n) txtC('ПУСТО', 418, 199, '#d23c3c', { face: 'sign', size: 8 });
   }
 
   /* ---------- Динамика стен ---------- */
@@ -520,7 +526,7 @@ const World = (() => {
     R(462, 66, 3, 18, '#4a3a2a'); R(456, 58, 14, 10, '#3f8f3a'); R(458, 56, 10, 4, '#5cb85c');
     if (G.time < (G.flags.truckUntil || 0)) {
       const tx = 410, ty = 52;
-      R(tx, ty, 34, 14, '#e8e8e0'); R(tx, ty, 34, 1, '#fff'); txt('КРЯ', tx + 6, ty + 4, '#c0392b');
+      R(tx, ty, 34, 14, '#e8e8e0'); R(tx, ty, 34, 1, '#fff'); txt('КРЯ', tx + 6, ty + 7, '#c0392b', { face: 'sign', size: 7 });
       R(tx + 34, ty + 4, 12, 10, '#3b6ea8'); R(tx + 36, ty + 6, 6, 4, '#a6d8ff');
       R(tx + 4, ty + 13, 6, 6, '#222'); R(tx + 6, ty + 15, 2, 2, '#888'); R(tx + 36, ty + 13, 6, 6, '#222'); R(tx + 38, ty + 15, 2, 2, '#888');
     }
@@ -550,22 +556,22 @@ const World = (() => {
     R(366, 1, 8, 1, elevT > 0 ? '#ffb43a' : '#553');
     /* табло котировок на стене коридора */
     const ctx = Spr.ctx();
-    R(262, 89, 76, 16, '#3a2a20'); R(263, 90, 74, 14, '#111');
-    ctx.save(); ctx.beginPath(); ctx.rect(264, 90, 72, 14); ctx.clip();
+    R(262, 88, 76, 18, '#3a2a20'); R(263, 89, 74, 16, '#111'); R(263, 97, 74, 1, '#2a2a2a');
+    ctx.save(); ctx.beginPath(); ctx.rect(264, 89, 72, 16); ctx.clip();
     const segs = [];
     for (const id in G.market.t) {
       const k = G.market.t[id];
       const ch = (k.price / k.open - 1) * 100;
-      segs.push([id + ' ', '#ffb43a'], [k.price.toFixed(2) + ' ', '#e8e8e8'], [(ch >= 0 ? '^' : 'v') + Math.abs(ch).toFixed(1) + '%   ', ch >= 0 ? '#5dff7a' : '#ff5a5a']);
+      segs.push([id, '#ffb43a'], [k.price.toFixed(2), '#e8e8e8'], [(ch >= 0 ? '▲' : '▼') + Math.abs(ch).toFixed(1) + '%   ', ch >= 0 ? '#5dff7a' : '#ff5a5a']);
     }
-    const totalW = segs.reduce((s, sg) => s + Font.width(sg[0]) + 1, 0);
-    const ox = 336 - ((t * 14) % (totalW + 72));
+    if (!tickW || tickN !== segs.length) { tickW = segs.reduce((s, sg) => s + Font.width(sg[0], TICK) + 1, 0); tickN = segs.length; }
+    const ox = 336 - ((t * 14) % (tickW + 72));
     for (let rep = 0; rep < 2; rep++) {
-      let xx = ox + rep * (totalW + 30);
-      for (const [s, col] of segs) { txt(s, xx, 91, col); xx += Font.width(s) + 1; }
+      let xx = ox + rep * (tickW + 30);
+      for (const [s, col] of segs) { const w = Font.width(s, TICK); if (xx + w > 262 && xx < 340) txt(s, xx, 93, col, TICK); xx += w + 1; }
     }
-    const l2 = `УТКИ ${Math.floor(G.ducks)}/${CFG.PLAN}`;
-    txtC(l2, 300, 98, '#8fd3ff');
+    const l2 = `УТКИ ${Math.floor(G.ducks)} / ${G.plan}`;
+    txtC(l2, 300, 101.2, '#8fd3ff', TICK);
     ctx.restore();
     /* туалетные двери */
     [['wc1', 147], ['wc2', 166]].forEach(([k, x]) => {
@@ -599,7 +605,7 @@ const World = (() => {
     R(404, 240, 5, 5, '#222'); R(405, 241, 3, 3, run ? '#5dff7a' : (lampOn ? '#ff3a3a' : '#5a1a1a'));
     if (!run && G.phase === 'day') {
       const msg = G.time < G.breakdownUntil ? 'ПОЛОМКА' : (G.flags.rubberOut ? 'НЕТ РЕЗИНЫ' : 'СТОП');
-      if (lampOn) txtC(msg, 260, 244, '#ff5a5a');
+      if (lampOn) txtC(msg, 260, 247, '#ff5a5a', { face: 'sign', size: 7, shadow: '#3a0a0a' });
     }
     if (G.time < G.breakdownUntil && Math.random() < 0.3) emit(U.rand(416, 440), U.rand(246, 260), 'spark');
   }
@@ -726,7 +732,7 @@ const World = (() => {
   function drawParts() {
     for (const p of parts) {
       const a = 1 - p.age / p.life;
-      if (p.type === 'z') { txt('Z', p.x, p.y, p.c); continue; }
+      if (p.type === 'z') { txt('z', p.x, p.y + 2, p.c, { face: 'sign', size: 6 }); continue; }
       if (p.type === 'flash') { R(p.x - 2, p.y - 2, 5, 5, '#ffffff'); continue; }
       if (p.type === 'heart') { Spr.mark('heart', p.x - 3, p.y - 3); continue; }
       if (p.type === 'note') { Spr.mark('note', p.x - 3, p.y - 3); continue; }
@@ -752,6 +758,8 @@ const World = (() => {
 
   /* ---------- Публичное ---------- */
   function init() { bg = buildBg(); }
+  /* утро нового дня: чистый конвейер, без частиц и реплик */
+  function resetDay() { parts = []; belt.ducks = []; belt.acc = 0; belt.pos = 0; shakeT = 0; elevT = 0; tickW = 0; for (const k in bubEls) { bubEls[k].remove(); delete bubEls[k]; } }
 
   function update(dt) {
     t += dt;
@@ -832,7 +840,7 @@ const World = (() => {
     ctx.save();
     if (shakeT > 0) ctx.translate(Math.round(U.rand(-2, 2) * Math.min(1, shakeT)), Math.round(U.rand(-1, 1) * Math.min(1, shakeT)));
     hits = [];
-    ctx.drawImage(bg, 0, 0);
+    ctx.drawImage(bg, 0, 0, W, H);
     drawWallDynamic();
     drawConveyor();
     drawCrates();
@@ -908,8 +916,9 @@ const World = (() => {
       const e = G.emps[i];
       if (e.gone || e.state !== 'seated') {
         const d = DESKS[i];
-        const why = e.gone ? { fired: 'уволен(а)', home: 'ушёл(ла) домой', quit: 'уволился(ась)', fled: 'сбежал(а)' }[e.gone] : NPC.taskLabel(e);
-        addHit(d.x, d.y - 8, 40, 30, `Стол: ${e.name} — ${e.state === 'visit' ? 'у вас в кабинете' : e.state === 'walk' ? 'идёт' : why}`, () => UI.openDossier(e));
+        if (e.gone && e.gone !== 'home') { addHit(d.x, d.y - 8, 40, 30, `Свободный стол · вакансия «${e.role}» — резюме в лотке`, () => UI.openPanel('docs', 'cv')); continue; }
+        const why = e.gone ? 'ушёл(ла) домой до завтра' : NPC.taskLabel(e);
+        addHit(d.x, d.y - 8, 40, 30, `Стол: ${e.name} — ${e.state === 'visit' ? 'у вас в кабинете' : e.state === 'walk' ? (e.newbie ? 'новичок идёт к столу' : 'идёт') : why}`, () => UI.openDossier(e));
       }
     }
 
@@ -977,8 +986,9 @@ const World = (() => {
   }
 
   return {
-    init, update, render, hitTest, say, emit,
-    setScale: s => { scale = s; },
+    init, update, render, hitTest, say, emit, resetDay,
+    setScale(s, ds) { scale = s; if (ds && ds !== DS) { DS = ds; if (bg) bg = buildBg(); } },
+    rebuild() { tickW = 0; bg = buildBg(); },
     setHover: h => { hover = h; },
     feedDucks: n => { belt.acc += n; },
     shake: s => { shakeT = Math.max(shakeT, s); },

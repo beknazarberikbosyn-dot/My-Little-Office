@@ -2,7 +2,9 @@
 /* Совет директоров в конце рабочего дня */
 const Board = (() => {
   const $ = id => document.getElementById(id);
-  let t = 0, rep = null, sc = null, verdict = null, speaking = -1, moodAll = 'normal';
+  let t = 0, rep = null, sc = null, verdict = null, speaking = -1, moodAll = 'normal', applied = false, why = '';
+  const WD_NOM = ['понедельник', 'вторник', 'среда', 'четверг', 'пятница'];
+  const WD_GEN = ['понедельника', 'вторника', 'среды', 'четверга', 'пятницы'];
 
   const DIRS = [
     { key: 'sec', name: 'Полковник Шпионов', title: 'Директор по безопасности', look: { skin: '#eec39a', hair: '#1b1b22', hairStyle: 'short', shirt: '#ffffff', tie: '#111111', pants: '#111', jacket: '#16181c', glasses: true } },
@@ -29,10 +31,14 @@ const Board = (() => {
     return { total, prod, profit, docs, sec, calm, repu };
   }
   function getVerdict(r, s) {
-    if (r.bankrupt) return 'fired';
+    why = '';
+    if (r.bankrupt) { why = 'bankrupt'; return 'fired'; }
     if (s.total >= 75) return 'promo';
     if (s.total >= 52) return 'stay';
-    if (s.total >= 32) return 'fine';
+    if (s.total >= 32) {
+      if (G.career.strikes >= 1) { why = 'strikes'; return 'fired'; }
+      return 'fine';
+    }
     return 'fired';
   }
 
@@ -40,8 +46,10 @@ const Board = (() => {
   function lines(r) {
     const L = {};
     const p = U.money(r.profit);
-    L.chair1 = 'Итак, ваш первый день позади. Совет изучил отчёт. Давайте послушаем коллег.';
-    let cfo = r.profit >= 5000 ? `Прибыль ${p}. Я пересчитала трижды — и трижды улыбнулась. Для понедельника это рекорд.`
+    const wd = Sim.weekday(r.day || G.day);
+    L.chair1 = (r.day || G.day) === 1 ? 'Итак, ваш первый день позади. Совет изучил отчёт. Давайте послушаем коллег.'
+      : `Итак, ${WD_NOM[wd]} позади — день ${r.day} на посту. Совет изучил отчёт. ${G.career.strikes ? 'Напомню: у вас уже есть один штраф. ' : ''}Послушаем коллег.`;
+    let cfo = r.profit >= 5000 ? `Прибыль ${p}. Я пересчитала трижды — и трижды улыбнулась. Для ${WD_GEN[wd]} это рекорд.`
       : r.profit >= 2000 ? `Прибыль ${p}. Неплохо, но утки любят счёт, а счёт любит больше нулей.`
         : r.profit >= 0 ? `Прибыль ${p}. Мы почти ничего не заработали. «Почти» — ключевое слово.`
           : `Убыток ${U.money(-r.profit)}. Я посчитала трижды. Это не ошибка калькулятора — это ошибка менеджера.`;
@@ -69,17 +77,24 @@ const Board = (() => {
     L.sec = sec;
 
     let hr = r.chaosAvg < 25 && r.chaosEnd < 40 ? 'В офисе спокойно, люди улыбаются. Даже стажёр не плакал. Браво!'
-      : r.chaosEnd < 60 ? 'Сотрудники нервничали, но держались. Пара седых волос — нормальная цена понедельника.'
+      : r.chaosEnd < 60 ? `Сотрудники нервничали, но держались. Пара седых волос — нормальная цена ${WD_GEN[wd]}.`
         : 'К вечеру офис превратился в Уолл-стрит: деньги из окон, вопли, галстуки на головах. Мне до сих пор снится горн.';
     if (r.raid) hr += ' И к нам приходила Комиссия по ценным бумагам! КОМИССИЯ!';
     if (r.bonuses >= 2 || r.sentHome >= 1) hr += ' Спасибо, что заботились о людях.';
+    if (r.hired) hr += ` И новых людей вы наняли: ${r.hired}. Посмотрим, как они себя покажут.`;
+    const vac = Hire.vacancies().length;
+    if (vac) hr += ` Но пустых столов до сих пор ${vac}. Завтра ждём резюме — и решений.`;
     L.hr = hr;
 
+    const next = Sim.RANKS[Math.min(Sim.RANKS.length - 1, G.career.rank + 1)];
     L.verdict = {
-      promo: 'Совет единогласно решил: вы ПОВЫШЕНЫ до старшего менеджера! Завтра — кабинет побольше и утка позолоченная.',
-      stay: 'Совет решил: вы остаётесь на должности. Работайте лучше — мы следим.',
+      promo: G.career.rank >= Sim.RANKS.length - 1 ? 'Совет аплодирует стоя! Выше должности уже нет — но премия ваша. Завтра план прежний, а слава — больше.'
+        : `Совет единогласно решил: вы ПОВЫШЕНЫ — теперь вы ${next.toLowerCase()}! Завтра кабинет побольше, утка позолоченнее, а план — выше.`,
+      stay: 'Совет решил: вы остаётесь на должности. Завтра новый день — работайте лучше, мы следим.',
       fine: 'Совет недоволен. Вы ОШТРАФОВАНЫ на $1 500. Ещё один такой день — и попрощаемся.',
-      fired: r.bankrupt ? 'Компания ушла в минус. Совет решил… вы УВОЛЕНЫ. Сдайте штампы и пропуск.' : 'Совет решил… вы УВОЛЕНЫ. Сдайте штампы и пропуск. Утку можете оставить себе.',
+      fired: why === 'bankrupt' ? 'Компания ушла в минус. Совет решил… вы УВОЛЕНЫ. Сдайте штампы и пропуск.'
+        : why === 'strikes' ? 'Это уже второй провальный день. Мы предупреждали. Совет решил… вы УВОЛЕНЫ. Сдайте штампы и пропуск.'
+          : 'Совет решил… вы УВОЛЕНЫ. Сдайте штампы и пропуск. Утку можете оставить себе.',
     }[verdict];
     return L;
   }
@@ -88,7 +103,7 @@ const Board = (() => {
   function reportRows(r, s) {
     const pts = v => `<em>${Math.round(v)}</em>`;
     return [
-      ['Произведено уток', `${r.ducks} / ${r.plan}`, pts(s.prod), r.ducks >= r.plan ? 'up' : 'down'],
+      ['Произведено уток', `${U.num(r.ducks)} / ${U.num(r.plan)}`, pts(s.prod), r.ducks >= r.plan ? 'up' : 'down'],
       ['Выручка от продаж', U.money(r.revenue, true), '', 'up'],
       ['Зарплаты и аренда', U.money(-(r.payroll + r.overhead)), '', 'down'],
       ['Сырьё', U.money(-r.materials), '', 'down'],
@@ -102,6 +117,8 @@ const Board = (() => {
       ...(r.innocentFired ? [['Уволено невиновных', String(r.innocentFired), '', 'down']] : []),
       ['Хаос в офисе', `в среднем ${Math.round(r.chaosAvg)}% · к вечеру ${Math.round(r.chaosEnd)}%`, pts(s.calm), r.chaosEnd < 50 ? 'up' : 'down'],
       ['Репутация', `${Math.round(r.rep)} / 100`, pts(s.repu), r.rep >= 50 ? 'up' : 'down'],
+      ...(r.hired ? [['Нанято сотрудников', String(r.hired), '', 'up']] : []),
+      ['Касса на вечер', U.money(r.cash), '', r.cash >= 0 ? '' : 'down'],
     ];
   }
 
@@ -109,12 +126,13 @@ const Board = (() => {
     rep = report;
     sc = score(rep);
     verdict = getVerdict(rep, sc);
+    applied = false;
     G.phase = 'board';
     t = 0; speaking = -1; moodAll = 'normal';
     const box = $('board');
     const rows = reportRows(rep, sc);
     box.innerHTML = `<div class="report wood">
-      <h2>Итоги дня · отчёт для совета</h2>
+      <h2>Итоги дня ${rep.day} · ${Sim.WEEK_FULL[Sim.weekday(rep.day)].toLowerCase()}</h2>
       ${rep.notes.length ? `<p class="notes">${rep.notes.map(U.esc).join(' ')}</p>` : ''}
       <table class="rep">${rows.map(([k, v, p, cls], i) => `<tr class="${cls}" style="--d:${i * 0.22}s"><td>${k}</td><td>${v}</td><td>${p}</td></tr>`).join('')}</table>
       <button class="btn big" id="b-hear" style="--d:${rows.length * 0.22 + 0.2}s">Войти в зал совета →</button>
@@ -156,37 +174,52 @@ const Board = (() => {
   function showVerdict() {
     speaking = -1;
     G.phase = 'verdict';
+    if (!applied) {
+      applied = true;
+      Sim.applyVerdict(verdict, sc.total);
+      if (verdict === 'fired') Sim.clearSave();
+      try {
+        const best = +localStorage.getItem('mlo_best_days') || 0;
+        if (G.day > best) localStorage.setItem('mlo_best_days', String(G.day));
+      } catch (e) { /* хранилище недоступно — не страшно */ }
+      Sfx.play(verdict === 'promo' || verdict === 'stay' ? 'fanfare' : 'doom');
+      setTimeout(() => Sfx.play('stamp'), 350);
+    }
+    const C = G.career;
     const V = {
-      promo: ['ПОВЫШЕН', 'Старший менеджер «Кря Индастриз»', 'ok'],
-      stay: ['ОСТАВЛЕН', 'Остаётесь менеджером. Пока что.', 'mid'],
-      fine: ['ШТРАФ', 'Минус $1 500 из вашей зарплаты', 'warn'],
+      promo: ['ПОВЫШЕН', `Новая должность: ${Sim.RANKS[C.rank].toLowerCase()} · премия на ваш счёт`, 'ok'],
+      stay: ['ОСТАВЛЕН', 'Остаётесь на должности. Завтра — новый день.', 'mid'],
+      fine: ['ШТРАФ', `Минус $1 500 из вашей зарплаты · предупреждение ${C.strikes} из 2`, 'warn'],
       fired: ['УВОЛЕН', 'Сдайте пропуск на выходе', 'no'],
     }[verdict];
     let best = 0;
-    try {
-      best = +localStorage.getItem('mlo_best') || 0;
-      if (sc.total > best) localStorage.setItem('mlo_best', String(sc.total));
-    } catch (e) { /* хранилище недоступно — не страшно */ }
+    try { best = +localStorage.getItem('mlo_best_days') || 0; } catch (e) { best = 0; }
+    const fired = verdict === 'fired';
+    const hist = C.history.slice(-7).map(h => `<i class="hv-${h.verdict}" title="День ${h.day}: ${h.score} очков">${h.day}</i>`).join('');
     const box = $('board');
     box.innerHTML = `<div class="verdict wood">
-      <p class="v-pre">Решение совета директоров</p>
+      <p class="v-pre">Решение совета директоров · день ${G.day}</p>
       <div class="v-stamp ${V[2]}">${V[0]}</div>
       <p class="v-sub">${V[1]}</p>
       <div class="v-score"><span>Оценка дня</span><b>${sc.total}</b><span>/ 100</span></div>
-      <p class="muted">${sc.total > best && best ? 'Новый рекорд!' : best ? `Лучший результат: ${Math.max(best, sc.total)}` : ''}</p>
+      <div class="career">
+        <div><small>Должность</small><b>${U.esc(Sim.RANKS[C.rank])}</b></div>
+        <div><small>Ваш кошелёк</small><b class="${C.wallet < 0 ? 'neg' : ''}">${U.money(C.wallet)}</b></div>
+        <div><small>Предупреждения</small><b>${C.strikes} / 2</b></div>
+        <div><small>Дни</small><span class="hist">${hist}</span></div>
+      </div>
       <div class="v-btns">
-        <button class="btn big" id="b-again">Новый рабочий день</button>
+        ${fired ? '<button class="btn big" id="b-again">Начать новую карьеру</button>' : `<button class="btn big" id="b-next">Следующий день: ${Sim.WEEK_FULL[Sim.weekday(G.day + 1)].toLowerCase()} →</button>`}
         <button class="btn" id="b-report">Отчёт ещё раз</button>
       </div>
-      <p class="muted small">Каждый день сотрудники, шпионы и биржа другие. День 2 — в разработке.</p>
+      <p class="muted small">${fired ? `Вы продержались дней: ${G.day}. ${best > G.day ? `Рекорд — ${best}.` : 'Это ваш рекорд!'}` : 'Всё, что было сегодня, перейдёт в завтра: деньги, люди, шпионы, репутация и недоделанные дела. Игра сохраняется в начале каждого дня.'}</p>
     </div>`;
     box.classList.remove('hidden');
-    Sfx.play(verdict === 'promo' || verdict === 'stay' ? 'fanfare' : 'doom');
-    setTimeout(() => Sfx.play('stamp'), 350);
-    $('b-again').onclick = () => location.reload();
+    if (fired) $('b-again').onclick = () => Game.newCareer();
+    else $('b-next').onclick = () => Game.nextDay();
     $('b-report').onclick = () => {
       const rows = reportRows(rep, sc);
-      box.innerHTML = `<div class="report wood static"><h2>Итоги дня</h2>
+      box.innerHTML = `<div class="report wood static"><h2>Итоги дня ${rep.day}</h2>
         <table class="rep">${rows.map(([k, v, p, cls]) => `<tr class="${cls}"><td>${k}</td><td>${v}</td><td>${p}</td></tr>`).join('')}</table>
         <button class="btn big" id="b-back">← К решению совета</button></div>`;
       $('b-back').onclick = showVerdict;
