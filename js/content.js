@@ -48,7 +48,7 @@ const Content = (() => {
           if (G.cash < total) return noCash();
           Sim.money(-total, 'materials'); G.rep -= 3; Market.jump('GOOS', 4);
           Sim.queue({ t: G.time + 40, type: 'deliver', kg: 200 });
-          Sim.queue({ t: G.time + 41, type: 'fn', fn: () => Sim.toast('«Гусиный Пух» оказался подставной фирмой ГусьКорп! Пришло всего 200 кг, и те пахнут гусём.', 'bad') });
+          Sim.queue({ t: G.time + 41, type: 'effect', text: '«Гусиный Пух» оказался подставной фирмой ГусьКорп! Пришло всего 200 кг, и те пахнут гусём.', tone: 'bad' });
           return R(`Отправлено ${U.money(total)} предоплатой на Каймановы острова. Ждём резину…`, 'warn');
         },
         reject() { G.rep += 1; return R('Отклонено. Позже выяснилось: «Гусиный Пух» — подставная фирма ГусьКорп.', 'good'); },
@@ -320,7 +320,7 @@ const Content = (() => {
         sign: 'Инспектор Строгов', correct: 'approve',
         approve() { if (G.cash < 2000) return noCash(); Sim.money(-2000, 'chaos'); G.rep += 2; return R('Штраф оплачен. Инспектор Строгов удовлетворённо закрыл папку.', 'good'); },
         reject() {
-          Sim.queue({ t: Math.max(G.time + 5, U.T(12, 0)), type: 'fn', fn: () => { Sim.money(-4000, 'chaos'); G.rep -= 6; Sim.toast('Комиссия удвоила неоплаченный штраф: −$4 000, репутация −6.', 'bad'); } });
+          Sim.queue({ t: Math.max(G.time + 5, U.T(12, 0)), type: 'effect', cash: -4000, cat: 'chaos', rep: -6, text: 'Комиссия удвоила неоплаченный штраф: −$4 000, репутация −6.', tone: 'bad' });
           return R('Предписание отклонено. Комиссия такого не прощает…', 'warn');
         },
       };
@@ -344,7 +344,7 @@ const Content = (() => {
         sign: who, correct: 'approve',
         approve() { if (G.cash < 700) return noCash(); Sim.money(-700, 'staff'); Sim.present().forEach(e => Sim.heal(e, 4)); return R('Компенсация выплачена. В офисе облегчённо выдохнули: босс умеет признавать ошибки.', 'good'); },
         reject() {
-          Sim.queue({ t: G.time + 90, type: 'fn', fn: () => { Sim.money(-1500, 'staff'); G.rep -= 5; Sim.toast('Суд встал на сторону уволенного сотрудника: −$1 500, репутация −5.', 'bad'); } });
+          Sim.queue({ t: G.time + 90, type: 'effect', cash: -1500, cat: 'staff', rep: -5, text: 'Суд встал на сторону уволенного сотрудника: −$1 500, репутация −5.', tone: 'bad' });
           return R('Претензия отклонена. Юристы говорят, суд будет через пару часов.', 'warn');
         },
       };
@@ -672,10 +672,9 @@ const Content = (() => {
             { label: 'Финансировать ($1 500)', fn: () => {
               Sim.money(-1500, 'office'); Sim.heal(e, 15);
               const win = U.chance(0.6);
-              Sim.queue({ t: G.time + 60, type: 'fn', fn: () => {
-                if (win) { G.price += 0.6; G.rep += 4; Sim.toast(U.fill('Утки-космонавты {name} разлетаются с полок! Цена утки +$0.60.', e), 'good'); }
-                else Sim.toast(U.fill('Прототип утки-космонавта от {name} утонул в ванне. Деньги потрачены.', e), 'bad');
-              } });
+              Sim.queue(win
+                ? { t: G.time + 60, type: 'effect', price: 0.6, rep: 4, text: U.fill('Утки-космонавты {name} разлетаются с полок! Цена утки +$0.60.', e), tone: 'good' }
+                : { t: G.time + 60, type: 'effect', text: U.fill('Прототип утки-космонавта от {name} утонул в ванне. Деньги потрачены.', e), tone: 'bad' });
               return V('Вы не пожалеете! Через час покажу результат!');
             } },
             { label: 'Похвалить, но отказать', fn: () => { Sim.heal(e, 4); return V('Ну… может, в следующем квартале.'); } },

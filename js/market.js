@@ -136,12 +136,14 @@ const Market = (() => {
       const k = G.market.t[id];
       t[id] = { price: k.price, open: k.open, hist: k.hist.slice(-120), shares: k.shares, cost: k.cost, state: k.state, drift: k.drift, vol: k.vol, desc: k.desc };
     }
-    return { t, ev: G.market.ev };
+    const M = G.market;
+    return { t, ev: M.ev, bonds: M.bonds, penny: M.penny, pennyWin: M.pennyWin, bondRate: M.bondRate, bondsDone: M.bondsDone, pennyDone: M.pennyDone, pennyResult: M.pennyResult };
   }
   function load(o) {
     init();
     for (const id in o.t) if (G.market.t[id]) Object.assign(G.market.t[id], o.t[id]);
     G.market.ev = o.ev || [];
+    ['bonds', 'penny', 'pennyWin', 'bondRate', 'bondsDone', 'pennyDone', 'pennyResult'].forEach(k => { if (o[k] !== undefined) G.market[k] = o[k]; });
   }
 
   return { init, newDay, plan, tick, jump, drift, buy, sell, buyBonds, stocksValue, invested, value, happened, save, load };

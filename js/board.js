@@ -177,7 +177,8 @@ const Board = (() => {
     if (!applied) {
       applied = true;
       Sim.applyVerdict(verdict, sc.total);
-      if (verdict === 'fired') Sim.clearSave();
+      if (verdict === 'fired') Saves.finish({ day: G.day, rank: Sim.RANKS[G.career.rank], cash: Math.round(G.cash), score: sc.total });
+      else Sim.save();
       try {
         const best = +localStorage.getItem('mlo_best_days') || 0;
         if (G.day > best) localStorage.setItem('mlo_best_days', String(G.day));

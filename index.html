@@ -51,7 +51,13 @@
         </div>
       </div>
 
-      <div id="pause" class="hidden"><div class="wood">ПАУЗА<small>Пробел или клик — продолжить</small></div></div>
+      <div id="pause" class="hidden"><div class="wood">ПАУЗА
+        <div class="pause-btns">
+          <button class="btn big" id="p-resume">Продолжить</button>
+          <button class="btn" id="p-save">Сохранить</button>
+          <button class="btn" id="p-menu">Сохранить и выйти в меню</button>
+        </div>
+        <small>Игра сохраняется сама каждые несколько секунд и при закрытии вкладки</small></div></div>
 
       <div id="title">
         <div class="title-card wood">
@@ -62,8 +68,10 @@
           <div class="title-btns">
             <button class="btn big hidden" id="btn-continue">Продолжить</button>
             <button class="btn big" id="btn-start">Начать рабочий день</button>
+            <button class="btn hidden" id="btn-archive">Архив</button>
             <button class="btn" id="btn-how">Как играть</button>
           </div>
+          <div id="archive" class="hidden"></div>
           <div id="how" class="hidden">
             <ul>
               <li><b>Клик по сотруднику</b> за стеклом — досье и вызов «на ковёр».</li>
@@ -100,6 +108,7 @@
   <script src="js/world.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/board.js"></script>
+  <script src="js/saves.js"></script>
   <script src="js/main.js"></script>
 </body>
 </html>

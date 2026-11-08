@@ -565,6 +565,22 @@ table.srv tr.bad td:nth-child(3) { color: #b01a10; font-weight: 700; }
 .title-btns { display: flex; gap: 0.6rem; justify-content: center; margin: 0.8rem 0 0.4rem; flex-wrap: wrap; }
 #how ul { text-align: left; font-size: 0.8rem; padding-left: 1.1rem; margin: 0.5rem 0; }
 #how li { margin: 0.25rem 0; }
+#archive { text-align: left; margin: 0.4rem 0; }
+#archive h3 { font-family: var(--f-head); font-weight: 400; font-size: 1rem; margin: 0.2rem 0 0.4rem; text-align: center; }
+#archive ul { list-style: none; margin: 0; padding: 0; max-height: 15rem; overflow-y: auto; }
+#archive li { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.5rem; margin-bottom: 0.3rem; background: #fff3d6; border: 0.12rem solid #d0a060; }
+#archive li.cur { border-color: #3fa34d; background: #eef8e6; }
+#archive li.fired { opacity: 0.75; }
+#archive li > div { flex: 1; min-width: 0; }
+#archive li small { display: block; font-size: 0.72rem; color: #6b4a2a; }
+#archive li em { font-style: normal; font-size: 0.66rem; font-weight: 900; color: #fff; background: #3fa34d; padding: 0.05rem 0.3rem; margin-left: 0.4rem; border-radius: 0.2rem; }
+#archive li em.x { background: #c0221a; }
+#archive li span { display: flex; gap: 0.3rem; }
+#archive .btn { font-size: 0.75rem; padding: 0.25rem 0.55rem; }
+#archive .btn.del { background: #d8b890; }
+#archive .btn.del.sure { background: #d23c3c; color: #fff; }
+.pause-btns { display: flex; flex-direction: column; gap: 0.45rem; margin-top: 0.8rem; }
+.pause-btns .btn { font-family: var(--f-body); }
 .tiny { font-size: 0.72rem; color: #8a5a2a; margin: 0.5rem 0 0; }
 
 #board {

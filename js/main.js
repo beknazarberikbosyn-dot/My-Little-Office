@@ -57,20 +57,52 @@ const Game = (() => {
     G.paused = false;
     $('pause').classList.add('hidden');
   }
-  /* Продолжить сохранённую карьеру */
-  function continueGame() {
-    const o = Sim.saved();
-    if (!o) { start(); return; }
-    Sim.load(o);
+  /* Продолжить сохранённую карьеру (id — из архива) */
+  function continueGame(id) {
+    if (id) Saves.setCurrent(id);
+    const o = Saves.read();
+    if (!o) { titleState(); return; }
+    Sim.restore(o);
     freshDay();
-    start();
+    if (G.ended) {               /* сохранились на вердикте совета — сразу утро */
+      $('title').classList.add('hidden');
+      Sfx.init();
+      if (!musicOn) { Sfx.startMusic(); musicOn = true; }
+      nextDay();
+    } else if (G.time <= CFG.DAY_START) start();
+    else resume();
   }
-  /* С чистого листа: новый офис, новые люди */
+  /* Вернуться в середину дня без утреннего вступления */
+  function resume() {
+    Sfx.init();
+    if (!musicOn) { Sfx.startMusic(); musicOn = true; }
+    Sfx.play('open');
+    $('title').classList.add('hidden');
+    $('board').classList.add('hidden');
+    $('hud').classList.remove('hidden');
+    G.phase = 'day';
+    UI.toast(`Игра загружена: ${Sim.WEEK_FULL[Sim.weekday()].toLowerCase()}, день ${G.day}, ${U.time(G.time)}.`, 'good');
+  }
+  /* С чистого листа: новый офис, новые люди. Прошлая карьера остаётся в архиве */
   function newCareer() {
-    Sim.clearSave();
+    Saves.create();
     Sim.newGame();
     freshDay();
     start();
+    setTimeout(save, 1200);
+  }
+  /* Автосохранение */
+  let lastSave = 0;
+  function save(manual) {
+    if (!['day', 'intro', 'verdict'].includes(G.phase)) return false;
+    const ok = Sim.save();
+    lastSave = performance.now();
+    if (manual) UI.toast(ok ? 'Игра сохранена.' : 'Не удалось сохранить: хранилище браузера недоступно или переполнено.', ok ? 'good' : 'bad');
+    return ok;
+  }
+  function toMenu() {
+    save();
+    location.reload();
   }
   /* Вечер → утро: всё сегодняшнее переходит в завтра */
   function nextDay() {
@@ -87,24 +119,55 @@ const Game = (() => {
     }, 1500);
   }
   function titleState() {
-    const o = Sim.saved();
+    Saves.migrate();
+    const cur = Saves.active();
+    const all = Saves.index();
     const c = $('btn-continue');
-    if (o) {
-      c.classList.remove('hidden');
-      c.textContent = `Продолжить · день ${o.day}`;
-      $('btn-start').textContent = 'Новая карьера';
-      $('btn-start').classList.remove('big');
-      $('title-note').textContent = `Сохранение: ${Sim.WEEK_FULL[Sim.weekday(o.day)].toLowerCase()}, день ${o.day} · ${Sim.RANKS[(o.career && o.career.rank) || 0].toLowerCase()} · касса ${U.money(o.cash)}`;
+    c.classList.toggle('hidden', !cur);
+    $('btn-archive').classList.toggle('hidden', !all.length);
+    $('btn-start').textContent = cur ? 'Новая игра' : 'Начать рабочий день';
+    $('btn-start').classList.toggle('big', !cur);
+    if (cur) {
+      c.textContent = cur.ended ? `Продолжить · утро дня ${cur.day + 1}` : `Продолжить · день ${cur.day}, ${U.time(cur.time || CFG.DAY_START)}`;
+      $('title-note').textContent = `${cur.name}: ${Sim.WEEK_FULL[Sim.weekday(cur.day)].toLowerCase()}, день ${cur.day} · ${(cur.rank || 'Менеджер').toLowerCase()} · касса ${U.money(cur.cash || 0)}. Новая игра не сотрёт её — она останется в архиве.`;
     } else {
-      c.classList.add('hidden');
-      $('title-note').textContent = 'Понедельник · День 1 · В 18:00 — совет директоров. Дальше — следующий день.';
+      $('title-note').textContent = 'Понедельник · День 1 · В 18:00 — совет директоров. Игра сохраняется сама.';
+    }
+    renderArchive();
+  }
+  function renderArchive() {
+    const box = $('archive');
+    const all = Saves.index().slice().sort((a, b) => b.updated - a.updated);
+    const cur = Saves.current();
+    const date = t => new Date(t).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    box.innerHTML = `<h3>Архив карьер</h3>` + (all.length ? `<ul>${all.map(s => {
+      const fired = s.status === 'fired';
+      const where = fired ? `уволен на ${s.day}-й день` : s.ended ? `день ${s.day}, вечер после совета` : `день ${s.day}, ${U.time(s.time || 540)}`;
+      return `<li class="${fired ? 'fired' : ''} ${s.id === cur && !fired ? 'cur' : ''}">
+        <div><b>${U.esc(s.name)}</b>${s.id === cur && !fired ? '<em>текущая</em>' : ''}${fired ? '<em class="x">уволен</em>' : ''}
+        <small>${where} · ${U.esc((s.rank || 'Менеджер').toLowerCase())} · ${U.money(s.cash || 0)} · ${date(s.updated)}</small></div>
+        <span>${fired ? '' : `<button class="btn" data-play="${s.id}">Играть</button>`}<button class="btn del" data-del="${s.id}">Удалить</button></span>
+      </li>`;
+    }).join('')}</ul>` : '<p>Пока пусто.</p>');
+  }
+  function onArchiveClick(ev) {
+    const b = ev.target.closest('button');
+    if (!b) return;
+    Sfx.init(); Sfx.play('click');
+    if (b.dataset.play) continueGame(b.dataset.play);
+    else if (b.dataset.del) {
+      if (!b.classList.contains('sure')) { b.classList.add('sure'); b.textContent = 'Точно удалить?'; return; }
+      Saves.remove(b.dataset.del);
+      titleState();
     }
   }
+
 
   function togglePause() {
     if (G.phase !== 'day') return;
     G.paused = !G.paused;
     $('pause').classList.toggle('hidden', !G.paused);
+    if (G.paused) save();
     Sfx.play('click');
   }
   function toggleSpeed() {
@@ -190,21 +253,34 @@ const Game = (() => {
       if (k === ' ' && G.phase === 'day') { ev.preventDefault(); togglePause(); }
       else if ((k === 'f' || k === 'а') && G.phase === 'day') toggleSpeed();
       else if (k === 'm' || k === 'ь') $('b-sound').click();
-      else if (k === 'enter' && G.phase === 'title') { if (Sim.saved()) continueGame(); else start(); }
+      else if (k === 'enter' && G.phase === 'title') { if (Saves.active()) continueGame(); else newCareer(); }
     });
-    $('btn-start').addEventListener('click', () => { if (Sim.saved()) newCareer(); else start(); });
-    $('btn-continue').addEventListener('click', continueGame);
-    $('btn-how').addEventListener('click', () => { $('how').classList.toggle('hidden'); Sfx.init(); Sfx.play('click'); });
-    $('pause').addEventListener('click', togglePause);
+    $('btn-start').addEventListener('click', () => newCareer());
+    $('btn-continue').addEventListener('click', () => continueGame());
+    $('btn-how').addEventListener('click', () => { $('how').classList.toggle('hidden'); $('archive').classList.add('hidden'); Sfx.init(); Sfx.play('click'); });
+    $('btn-archive').addEventListener('click', () => { renderArchive(); $('archive').classList.toggle('hidden'); $('how').classList.add('hidden'); Sfx.init(); Sfx.play('click'); });
+    $('archive').addEventListener('click', onArchiveClick);
+    $('pause').addEventListener('click', ev => {
+      const b = ev.target.closest('button');
+      if (!b) { togglePause(); return; }
+      ev.stopPropagation();
+      if (b.id === 'p-resume') togglePause();
+      else if (b.id === 'p-save') save(true);
+      else if (b.id === 'p-menu') toMenu();
+    });
+    /* сохраняемся раз в 10 секунд и при уходе со страницы */
+    setInterval(() => { if (performance.now() - lastSave > 9500) save(); }, 2500);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
+    window.addEventListener('pagehide', () => save());
     window.dbg = {
       get G() { return G; },
       skip(min) { for (let i = 0; i < min && G.phase === 'day'; i++) { Sim.minute(); G.time++; if (G.time >= CFG.DAY_END) { endOfDay(); break; } } },
-      start, nextDay, newCareer, continueGame,
+      start, nextDay, newCareer, continueGame, save,
       speed(n) { G.speed = n; },
     };
     requestAnimationFrame(loop);
   }
 
   boot();
-  return { togglePause, toggleSpeed, start, nextDay, newCareer };
+  return { togglePause, toggleSpeed, start, nextDay, newCareer, save };
 })();

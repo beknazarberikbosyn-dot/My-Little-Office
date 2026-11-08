@@ -246,8 +246,8 @@ const Sim = (() => {
     Hire.morning();
     /* сотрудники сами приходят к менеджеру */
     spread(7, U.T(9, 40), U.T(17, 10)).forEach(t => add(t, 'selfvisit'));
-    add(U.T(17, 30), 'fn', { fn: () => toast('До совета директоров 30 минут. Разберите документы и успокойте офис!', 'warn') });
-    add(U.T(17, 50), 'fn', { fn: () => { toast('10 минут до совета директоров!', 'warn'); Sfx.play('alarm'); } });
+    add(U.T(17, 30), 'effect', { text: 'До совета директоров 30 минут. Разберите документы и успокойте офис!', tone: 'warn' });
+    add(U.T(17, 50), 'effect', { text: '10 минут до совета директоров!', tone: 'warn', alarm: true });
   }
 
   /* ---------- События расписания ---------- */
@@ -270,6 +270,13 @@ const Sim = (() => {
       case 'clue': showClue(e, ev); break;
       case 'leak': leak(e); break;
       case 'news': addNews(ev.key, ev.ctx); break;
+      case 'effect':
+        if (ev.cash) money(ev.cash, ev.cat || 'other');
+        if (ev.rep) G.rep += ev.rep;
+        if (ev.price) G.price += ev.price;
+        if (ev.text) toast(ev.text, ev.tone || 'info');
+        if (ev.alarm) Sfx.play('alarm');
+        break;
       case 'resume': {
         if (!Hire.vacancies().length) break;
         NPC.deliverDoc(Hire.resumeDoc(Hire.candidate(ev.role, ev.trait)));
@@ -898,43 +905,81 @@ const Sim = (() => {
     save();
   }
 
-  /* ---------- Сохранение (в начале каждого дня) ---------- */
-  const SAVE_KEY = 'mlo_save_v2';
+  /* ---------- Сохранение: полный снимок дня в текущий слот (см. saves.js) ---------- */
   const EMP_KEEP = ['uid', 'id', 'female', 'look', 'trait', 'pers', 'name', 'surname', 'role', 'salary', 'skill', 'stress', 'col', 'row', 'sanity',
-    'clues', 'suspicion', 'evidence', 'lazyFixed', 'doubleAgent', 'herring', 'gone', 'vacant', 'days', 'hiredDay', 'recruited', 'raised', 'age'];
-  const pickEmp = e => { const o = {}; EMP_KEEP.forEach(k => { if (e[k] !== undefined) o[k] = e[k]; }); return o; };
+    'clues', 'suspicion', 'evidence', 'lazyFixed', 'doubleAgent', 'herring', 'gone', 'vacant', 'days', 'hiredDay', 'recruited', 'raised', 'age', 'leftDay'];
+  /* поля текущего дня — чтобы продолжить с того же места */
+  const DAY_KEEP = ['produced', 'searched', 'asked', 'soul', 'fined', 'bonus', 'salaryPaid', 'sleepUntil', 'fired', 'quit', 'fled', 'home', 'exiting',
+    'maxStage', 'probed', 'whistled', 'askedWfh', 'thanked', 'fakeBlueprints'];
+  const pick = (e, keys) => { const o = {}; keys.forEach(k => { if (e[k] !== undefined) o[k] = e[k]; }); return o; };
+  const pickEmp = e => pick(e, EMP_KEEP.concat(DAY_KEEP));
+  const MID_KEEP = ['time', 'ducks', 'price', 'rubberOutMin', 'producing', 'chaosSum', 'chaosN', 'chaosMax', 'highChaosMin', 'chaosCD', 'ledger',
+    'docLog', 'docStats', 'news', 'newsSeen', 'log', 'cd', 'musicUntil', 'overtime', 'breakdownUntil', 'mods', 'contracts', 'flags', 'leaks',
+    'spiesCaught', 'innocentFired', 'firedCount', 'sentHome', 'bonuses', 'hired', 'chaosEvents', 'speakerUses', 'plan', 'dayStart', 'dayStartHoldings', 'lastReport'];
+
+  function snapshot() {
+    const cat = NPC.cat();
+    const docs = G.inbox.concat(NPC.transit());
+    return {
+      v: 3, saved: Date.now(), day: G.day, uidSeq: G.uidSeq, cash: G.cash, rep: G.rep, rubber: G.rubber, priceBase: G.priceBase,
+      career: G.career, owned: G.owned, memory: G.memory, catHunger: cat ? cat.hunger : G.catHunger, docSeq: G.docSeq, brief: G.brief,
+      emps: G.emps.map(pickEmp), alumni: G.alumni.slice(-20).map(pickEmp), market: Market.save(),
+      mid: Object.assign(pick(G, MID_KEEP), { ended: G.phase === 'verdict' }),
+      inbox: docs.filter(d => d.key).map(d => ({ key: d.key, no: d.no, arrived: d.arrived, old: !!d.old, cand: d.cand ? pickEmp(d.cand) : null })),
+      /* звонок, который звенел в момент сохранения, раздастся снова */
+      sched: (G.call && !G.dialog ? [{ t: G.time + 1, type: 'call', key: G.call.key }] : []).concat(G.sched.filter(ev => ev.type !== 'fn')),
+      srvLog: NPC.srvLog().slice(0, 40),
+    };
+  }
+  /* сохранить в текущий слот; true — получилось */
   function save() {
-    try {
-      const o = {
-        v: 2, day: G.day, uidSeq: G.uidSeq, cash: G.cash, rep: G.rep, rubber: G.rubber, priceBase: G.priceBase,
-        career: G.career, owned: G.owned, memory: G.memory, catHunger: G.catHunger, carryDocs: G.inbox.filter(d => d.old).map(d => d.key),
-        docSeq: G.docSeq, brief: G.brief, emps: G.emps.map(pickEmp), alumni: G.alumni.slice(-20).map(pickEmp), market: Market.save(),
-      };
-      localStorage.setItem(SAVE_KEY, JSON.stringify(o));
-    } catch (err) { /* хранилище недоступно — играем без сохранения */ }
+    if (!G || G.phase === 'title') return false;
+    if (G.phase === 'verdict' && G.career.last === 'fired') return false;
+    try { return Saves.write(snapshot(), meta()); } catch (err) { return false; }
   }
-  function saved() {
-    try { const o = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); return o && o.v === 2 ? o : null; } catch (err) { return null; }
+  function meta() {
+    return { day: G.day, time: G.time, rank: RANKS[G.career.rank], cash: Math.round(G.cash), ended: G.phase === 'verdict', strikes: G.career.strikes };
   }
-  function clearSave() { try { localStorage.removeItem(SAVE_KEY); } catch (err) { /* нет хранилища */ } }
-  function load(o) {
+  const reviveEmp = x => {
+    const e = dayFields(Object.assign({ clues: [], suspicion: 0 }, x));
+    DAY_KEEP.forEach(k => { if (x[k] !== undefined) e[k] = x[k]; });
+    if (!e.gone && (e.exiting || e.fired || e.quit || e.fled)) e.gone = e.fired ? 'fired' : e.fled ? 'fled' : e.quit ? 'quit' : 'home';
+    if (e.gone) e.exiting = false;
+    if (x.vacant) { e.salaryPaid = 0; e.state = 'gone'; }
+    return e;
+  };
+  /* Загрузка снимка (v3) или старого сохранения начала дня (v2) */
+  function restore(o) {
     G = {
       phase: 'title', day: o.day, uidSeq: o.uidSeq, emps: [], alumni: [],
       cash: o.cash, rep: o.rep, rubber: o.rubber, priceBase: o.priceBase || CFG.DUCK_PRICE,
-      career: o.career, owned: o.owned || {}, memory: o.memory || {}, catHunger: o.catHunger || 40,
-      carryDocs: o.carryDocs || [], docSeq: o.docSeq || 410, brief: o.brief || [],
+      career: o.career, owned: o.owned || {}, memory: o.memory || {}, catHunger: o.catHunger != null ? o.catHunger : 40,
+      carryDocs: o.v === 2 ? (o.carryDocs || []) : [], docSeq: o.docSeq || 410, brief: o.brief || [],
     };
-    const restore = x => { const e = dayFields(Object.assign({ clues: [], suspicion: 0 }, x)); if (x.vacant) { e.salaryPaid = 0; e.state = 'gone'; } return e; };
-    G.emps = o.emps.map(restore);
-    G.alumni = (o.alumni || []).map(restore);
+    G.emps = o.emps.map(reviveEmp);
+    G.alumni = (o.alumni || []).map(reviveEmp);
     Market.load(o.market);
     beginDay();
     G.brief = o.brief || [];
+    if (o.v !== 3 || !o.mid) return;
+    Object.assign(G, o.mid);
+    G.ended = !!o.mid.ended;
+    G.sched = o.sched || [];
+    G.inbox = [];
+    for (const x of o.inbox || []) {
+      const d = x.key === 'resume' && x.cand ? Hire.resumeDoc(reviveEmp(x.cand)) : Content.makeDoc(x.key);
+      if (!d) continue;
+      d.no = x.no || ++G.docSeq; d.arrived = x.arrived != null ? x.arrived : G.time; d.old = x.old;
+      G.inbox.push(d);
+    }
+    G.docSeq = Math.max(o.docSeq || 410, ...G.inbox.map(d => d.no));
+    NPC.srvLog().push(...(o.srvLog || []));
+    updateChaos();
   }
 
   return {
     stage, present, heal, hurt, money, log, toast, addNews, newGame, queue, minute, makeEmployee, byUid, scheduleTraitEvents, payrollNow,
-    applyVerdict, nextDay, save, saved, clearSave, load, RANKS, WEEK, WEEK_FULL, weekday,
+    applyVerdict, nextDay, save, snapshot, restore, RANKS, WEEK, WEEK_FULL, weekday,
     receiveDoc, decideDoc, ring, PHONE, phoneAction,
     callIn, endVisit, askWork, search, soul, bonus, fine, fire, sendHome, turn, quit, goHomeFromDesk, arrive, endDay,
   };
