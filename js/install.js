@@ -25,7 +25,7 @@
   function instructions() {
     if (iOS && !safari) return show('<b>На iPhone и iPad</b> игру можно установить только из <b>Safari</b>. Откройте этот сайт в Safari и нажмите кнопку установки ещё раз.');
     if (iOS) return show('<b>iPhone / iPad:</b> нажмите <b>«Поделиться»</b> <span class="ic">⬆︎</span> внизу экрана → <b>«На экран „Домой“»</b> → <b>«Добавить»</b>. Значок с уткой появится на главном экране.');
-    if (mac && safari) return show('<b>Mac, Safari:</b> меню <b>«Файл» → «Добавить в Dock»</b>. Игра появится в Dock и в Launchpad. (В Chrome или Edge — значок установки справа в адресной строке.)');
+    if (mac && safari) return show('<b>Mac, Safari:</b> нажмите кнопку <b>«Поделиться»</b> <span class="ic">⬆︎</span> справа вверху окна Safari → <b>«Добавить в Dock»</b>. Или в строке меню в самом верху экрана: <b>«Файл» → «Добавить в Dock»</b> (если Safari развёрнут на весь экран, подведите мышь к верхнему краю — меню появится). Нужен macOS Sonoma или новее; на более старых системах откройте игру в <b>Chrome</b> и нажмите «Установить игру».');
     if (firefox) return show('Firefox не умеет устанавливать сайты как приложения. Откройте игру в <b>Chrome</b>, <b>Edge</b> или <b>Яндекс Браузере</b> (на iPhone — в Safari) и нажмите «Установить игру».');
     if (android) return show('<b>Android:</b> меню браузера <b>⋮</b> → <b>«Установить приложение»</b> или <b>«Добавить на главный экран»</b>.');
     return show('<b>Windows / Mac, Chrome или Edge:</b> нажмите значок установки <span class="ic">⊕</span> справа в адресной строке или меню <b>⋮ → «Установить My Little Office»</b>.');
