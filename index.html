@@ -2,7 +2,15 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#2a1a10">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Little Office">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="icon" href="icons/icon-32.png" sizes="32x32" type="image/png">
   <title>My Little Office — пиксельный симулятор менеджера</title>
   <meta name="description" content="Пиксельная игра: управляйте офисом фабрики резиновых уток, ловите шпионов конкурентов, штампуйте документы и не дайте офису превратиться в Уолл-стрит.">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
@@ -70,7 +78,9 @@
             <button class="btn big" id="btn-start">Начать рабочий день</button>
             <button class="btn hidden" id="btn-archive">Архив</button>
             <button class="btn" id="btn-how">Как играть</button>
+            <button class="btn install hidden" id="btn-install">Установить игру</button>
           </div>
+          <div id="install-help" class="hidden"></div>
           <div id="archive" class="hidden"></div>
           <div id="how" class="hidden">
             <ul>
@@ -87,6 +97,7 @@
       </div>
 
       <div id="board" class="hidden"></div>
+      <div id="rotate"><div><b>Поверните телефон</b><span>Офис «Кря Индастриз» широкий — играть удобнее горизонтально.</span></div></div>
       <div id="fade"></div>
       <div id="held-stamp"><i class="st-handle"></i><i class="st-base"></i></div>
       <div id="tooltip"></div>
@@ -109,6 +120,7 @@
   <script src="js/ui.js"></script>
   <script src="js/board.js"></script>
   <script src="js/saves.js"></script>
+  <script src="js/install.js"></script>
   <script src="js/main.js"></script>
 </body>
 </html>

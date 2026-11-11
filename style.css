@@ -666,3 +666,20 @@ table.rep tr.big td { font-size: 1.05rem; font-weight: 700; }
   #dialog { width: 97%; }
   .port-frame { width: 5rem; height: 5rem; }
 }
+
+/* ---------- Установка приложения ---------- */
+.btn.install { background: #3fa34d; color: #fff; box-shadow: inset 0 -0.2rem 0 #2a7a36; }
+#install-help { text-align: left; font-size: 0.85rem; line-height: 1.4; background: #eef8e6; border: 0.12rem solid #3fa34d; padding: 0.5rem 0.7rem; margin: 0.4rem 0; }
+#install-help .ic { display: inline-block; border: 1px solid #3b1f0a; border-radius: 0.2rem; padding: 0 0.25rem; font-size: 0.8em; }
+#rotate { display: none; }
+@media (orientation: portrait) and (max-width: 700px) {
+  #rotate {
+    display: flex; position: fixed; inset: 0; z-index: 999; align-items: center; justify-content: center; text-align: center;
+    background: rgba(30, 18, 10, 0.94); color: #ffe9b8; padding: 2rem;
+  }
+  #rotate b { display: block; font-family: var(--f-head); font-size: 1.6rem; margin-bottom: 0.6rem; }
+  #rotate span { font-size: 1rem; }
+}
+html, body { overscroll-behavior: none; -webkit-tap-highlight-color: transparent; }
+/* на заставке не мешаем: там можно установить игру и в вертикальном положении */
+#title:not(.hidden) ~ #rotate { display: none !important; }
